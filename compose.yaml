@@ -5,7 +5,8 @@ services:
     image: network-topology-web:0.1.0
     pull_policy: never
     build:
-      context: ./frontend
+      context: .
+      dockerfile: frontend/Dockerfile
     ports:
       - "127.0.0.1:${APP_PORT:-8080}:8080"
     read_only: true

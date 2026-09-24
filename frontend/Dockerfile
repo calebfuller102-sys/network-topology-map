@@ -5,16 +5,20 @@ WORKDIR /build
 RUN corepack enable \
     && corepack prepare pnpm@12.3.4 --activate
 
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml ./frontend/
+WORKDIR /build/frontend
 RUN pnpm install --frozen-lockfile
 
-COPY . .
+WORKDIR /build
+COPY frontend/ ./frontend/
+COPY backend/app/icon_manifest.py ./backend/app/icon_manifest.py
+WORKDIR /build/frontend
 RUN pnpm build
 
 FROM nginx:1.30.5-alpine3.24@sha256:bf3201ab56f23e5954646379c775d511fc466e9f11376d9725361064ad07ed35
 
-COPY nginx.conf /etc/nginx/nginx.conf
-COPY --from=build /build/dist/ /usr/share/nginx/html/
+COPY frontend/nginx.conf /etc/nginx/nginx.conf
+COPY --from=build /build/frontend/dist/ /usr/share/nginx/html/
 
 RUN nginx -t
 
