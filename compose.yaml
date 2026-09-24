@@ -1,0 +1,41 @@
+name: network-topology
+
+services:
+  web:
+    build:
+      context: ./frontend
+    ports:
+      - "127.0.0.1:${APP_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - app
+
+  api:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: sqlite:////data/topology.db
+      MONITOR_CONCURRENCY: ${MONITOR_CONCURRENCY:-8}
+    volumes:
+      - topology-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test:
+        ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/healthz', timeout=2)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks:
+      - app
+    # Add NET_RAW only after the selected ICMP implementation is tested in the
+    # target LXC. Never use privileged: true as an ICMP workaround.
+
+volumes:
+  topology-data:
+
+networks:
+  app:
+    internal: true

@@ -1,0 +1,33 @@
+# Node tooling
+node_modules/
+frontend/dist/
+frontend/.vite/
+dist/
+build/
+pnpm-debug.log*
+
+# Python tooling
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+backend/.venv/
+venv/
+env/
+
+# Runtime data and local overrides
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.*
+!.env.example
+compose.override.yaml
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
