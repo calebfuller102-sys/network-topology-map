@@ -40,6 +40,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px s
 h1, h2, p { margin: 0; }
 h1 { margin-top: 2px; font-size: 17px; letter-spacing: -0.01em; }
 h2 { font-size: 17px; letter-spacing: -0.01em; }
+h3 { margin: 2px 0 0; font-size: 14px; letter-spacing: -0.01em; }
 .topbar-actions { gap: 14px; }
 .connection-state { gap: 7px; color: #91a0a3; font-size: 12px; }
 .connection-dot { width: 7px; height: 7px; border-radius: 50%; background: #55c7aa; box-shadow: 0 0 0 3px rgba(85, 199, 170, 0.12); }
@@ -127,6 +128,51 @@ h2 { font-size: 17px; letter-spacing: -0.01em; }
 .inspector-actions { justify-content: flex-end; gap: 8px; padding-top: 5px; }
 .danger-button { padding: 9px 0; color: #f36f6f; border-color: transparent; background: transparent; font-size: 11px; font-weight: 700; text-align: left; }
 .danger-button:hover { color: #ff9a9a; }
+.monitor-panel { display: flex; flex-direction: column; gap: 11px; margin-top: 22px; padding-top: 18px; border-top: 1px solid #263336; }
+.monitor-panel-heading, .monitor-form-heading, .monitor-card-heading, .monitor-card-actions { display: flex; align-items: center; }
+.monitor-panel-heading, .monitor-form-heading, .monitor-card-heading { justify-content: space-between; gap: 10px; }
+.monitor-add-button { padding: 6px 9px; white-space: nowrap; }
+.monitor-live-warning, .monitor-empty { padding: 8px 9px; color: #d7c38c; border: 1px solid rgba(230, 189, 101, 0.34); border-radius: 6px; background: rgba(230, 189, 101, 0.08); font-size: 11px; line-height: 1.45; }
+.monitor-empty { color: #91a0a3; border-color: #344044; background: #141a1c; }
+.monitor-list { display: grid; gap: 9px; }
+.monitor-card { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid #344044; border-radius: 7px; background: #141a1c; }
+.monitor-card-heading > div { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.monitor-card-heading strong { overflow: hidden; color: #e4eaeb; font-family: "JetBrains Mono Local", ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.monitor-kind { color: #79cde3; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; }
+.monitor-state { flex: 0 0 auto; padding: 3px 5px; color: #c9f2e7; border: 1px solid rgba(85, 199, 170, 0.42); border-radius: 5px; background: rgba(85, 199, 170, 0.08); font-size: 10px; font-weight: 700; }
+.monitor-state.is-disabled { color: #aebbbd; border-color: #405257; background: transparent; }
+.monitor-state.is-awaiting { color: #c5d0d2; border-color: #52666a; background: rgba(119, 136, 139, 0.1); }
+.monitor-state.is-stale { color: #f4dca3; border-color: rgba(230, 189, 101, 0.42); background: rgba(230, 189, 101, 0.08); }
+.monitor-state.is-failed { color: #ffb1b1; border-color: rgba(243, 111, 111, 0.45); background: rgba(243, 111, 111, 0.08); }
+.monitor-config { color: #77888b; font-family: "JetBrains Mono Local", ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; }
+.monitor-diagnostics { display: flex; flex-direction: column; gap: 5px; padding: 8px; border: 1px solid #263336; border-radius: 6px; background: #111617; }
+.monitor-diagnostics-title { color: #91a0a3; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.monitor-result-empty { color: #77888b; font-size: 11px; }
+.monitor-result-grid { display: grid; gap: 5px; margin: 0; }
+.monitor-result-grid div { display: grid; grid-template-columns: 57px minmax(0, 1fr); gap: 7px; }
+.monitor-result-grid dt { color: #77888b; font-size: 10px; }
+.monitor-result-grid dd { min-width: 0; margin: 0; color: #c0ccce; font-size: 10px; line-height: 1.35; overflow-wrap: anywhere; }
+.monitor-result-grid .monitor-result-failure dd { color: #ffb1b1; }
+.monitor-card-actions { flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.monitor-card-actions .button { padding: 6px 8px; }
+.monitor-delete { margin-right: auto; padding: 6px 0; }
+.monitor-run-feedback { padding: 6px 8px; border-radius: 5px; font-size: 10px; line-height: 1.4; }
+.monitor-run-feedback.is-queued { color: #c9edf4; background: rgba(121, 205, 227, 0.1); }
+.monitor-run-feedback.is-completed { color: #c9f2e7; background: rgba(85, 199, 170, 0.1); }
+.monitor-run-feedback.is-unavailable { color: #f4dca3; background: rgba(230, 189, 101, 0.1); }
+.monitor-run-feedback.is-error { color: #ffb1b1; background: rgba(243, 111, 111, 0.1); }
+.monitor-form { display: flex; flex-direction: column; gap: 12px; padding: 12px; border: 1px solid #405257; border-radius: 7px; background: #171d1f; }
+.monitor-form label { display: flex; min-width: 0; flex-direction: column; gap: 6px; color: #c0ccce; font-size: 11px; font-weight: 700; }
+.monitor-form input:not([type="checkbox"]), .monitor-form select { width: 100%; min-height: 33px; padding: 7px 8px; color: #e4eaeb; border: 1px solid #344044; border-radius: 6px; outline: none; background: #111617; font-size: 12px; }
+.monitor-form input:not([type="checkbox"]):focus, .monitor-form select:focus { border-color: #79cde3; box-shadow: 0 0 0 2px rgba(121, 205, 227, 0.12); }
+.monitor-field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.checkbox-field { display: grid !important; grid-template-columns: auto 1fr; grid-template-rows: auto auto; align-content: center; column-gap: 7px; row-gap: 3px !important; }
+.checkbox-field input { grid-row: span 2; width: 15px; height: 15px; margin: 0; accent-color: #79cde3; }
+.checkbox-field span:last-child { color: #77888b; font-size: 10px; font-weight: 400; line-height: 1.35; }
+.checkbox-field-wide { padding: 8px; border: 1px solid #263336; border-radius: 6px; background: #111617; }
+.checkbox-field input:disabled { opacity: 0.55; }
+.monitor-form .field-error { margin: 0; }
+.monitor-form-error { padding: 7px 8px; border: 1px solid rgba(243, 111, 111, 0.38); border-radius: 6px; background: rgba(243, 111, 111, 0.08); }
 
 @media (max-width: 780px) {
   .topbar { align-items: flex-start; flex-direction: column; gap: 11px; }
@@ -137,4 +183,7 @@ h2 { font-size: 17px; letter-spacing: -0.01em; }
   .canvas-toolbar { align-items: flex-start; flex-direction: column; padding: 9px 13px; }
   .search-field { width: min(100%, 280px); }
   .legend { gap: 8px; }
+  .monitor-field-grid { grid-template-columns: 1fr; }
+  .monitor-card-actions { justify-content: flex-start; }
+  .monitor-delete { margin-right: 0; }
 }

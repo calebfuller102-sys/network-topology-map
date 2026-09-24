@@ -55,9 +55,9 @@ COMPOSE_PROJECT_NAME=network-topology-restore-test APP_PORT=18080 \
 
 Open `http://127.0.0.1:18080`, reload the map, and confirm its nodes, links,
 relative positions, and viewport. Use the snapshot response
-(`/api/v1/maps/{map_id}/snapshot`) to compare monitor definitions and latest
-results too; the monitor editor is a later roadmap phase. Confirm the services
-become healthy. After recording the result, remove only the test project's
+(`/api/v1/maps/{map_id}/snapshot`) and the inspector's monitor editor to compare
+monitor definitions and latest results. Confirm the services become healthy.
+After recording the result, remove only the test project's
 containers and volume (the test project name is explicit above):
 
 ```sh

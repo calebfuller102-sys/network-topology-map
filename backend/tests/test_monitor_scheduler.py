@@ -131,6 +131,7 @@ async def test_manual_run_coalesces_while_active_and_saves_latest_result(tmp_pat
     first_started = asyncio.Event()
     release_first = asyncio.Event()
     second_started = asyncio.Event()
+    release_second = asyncio.Event()
     calls = 0
 
     async def checker(_check):
@@ -141,7 +142,13 @@ async def test_manual_run_coalesces_while_active_and_saves_latest_result(tmp_pat
             await release_first.wait()
             return CheckOutcome(False, 1.0, error_code="timeout", error_message="Timed out")
         second_started.set()
-        return CheckOutcome(True, 2.0)
+        await release_second.wait()
+        return CheckOutcome(
+            False,
+            2.0,
+            error_code="connection_refused",
+            error_message="Refused",
+        )
 
     scheduler = MonitorScheduler(database, checker=checker, concurrency=1)
     try:
@@ -149,17 +156,68 @@ async def test_manual_run_coalesces_while_active_and_saves_latest_result(tmp_pat
         await asyncio.wait_for(first_started.wait(), timeout=1)
         entry = scheduler._entries[monitor_id]
         next_periodic = entry.next_run
-        await scheduler.run_now(monitor_id)
-        await scheduler.run_now(monitor_id)
+        receipt = await scheduler.run_now(monitor_id)
+        coalesced = await scheduler.run_now(monitor_id)
+        assert receipt == coalesced
+        assert receipt.status == "queued"
         assert calls == 1
         assert entry.next_run == next_periodic
 
         release_first.set()
         await asyncio.wait_for(second_started.wait(), timeout=1)
-        await wait_until(lambda: _result_success(database, monitor_id) is True)
+        # The prior periodic check has completed. Its failure is not evidence
+        # that the later manual request has completed.
+        assert (await scheduler.get_manual_run(monitor_id, receipt.run_id)).status == "queued"
+        release_second.set()
+        deadline = asyncio.get_running_loop().time() + 1
+        receipt_status = "queued"
+        while asyncio.get_running_loop().time() < deadline:
+            receipt_status = (await scheduler.get_manual_run(monitor_id, receipt.run_id)).status
+            if receipt_status == "completed":
+                break
+            await asyncio.sleep(0.01)
+        assert receipt_status == "completed"
+        await wait_until(lambda: _result_success(database, monitor_id) is False)
         assert calls == 2
     finally:
         release_first.set()
+        release_second.set()
+        await scheduler.stop()
+        database.dispose()
+
+
+@pytest.mark.asyncio
+async def test_completed_manual_receipts_are_evicted_before_rejecting_new_work(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database, (monitor_id,) = make_database(tmp_path / "manual-receipt-limit.db")
+    monkeypatch.setattr("app.monitoring.scheduler.MANUAL_RUN_RECEIPT_LIMIT", 1)
+
+    async def checker(_check):
+        return CheckOutcome(True, 1.0)
+
+    scheduler = MonitorScheduler(
+        database,
+        checker=checker,
+        concurrency=1,
+        poll_seconds=0.005,
+        reconcile_seconds=0.02,
+    )
+    try:
+        await scheduler.start()
+        await wait_until(lambda: _result_success(database, monitor_id) is True)
+        first = await scheduler.run_now(monitor_id)
+        deadline = asyncio.get_running_loop().time() + 1
+        while asyncio.get_running_loop().time() < deadline:
+            if (await scheduler.get_manual_run(monitor_id, first.run_id)).status == "completed":
+                break
+            await asyncio.sleep(0.01)
+        assert (await scheduler.get_manual_run(monitor_id, first.run_id)).status == "completed"
+
+        second = await scheduler.run_now(monitor_id)
+        assert second.run_id != first.run_id
+        assert second.status == "queued"
+    finally:
         await scheduler.stop()
         database.dispose()
 

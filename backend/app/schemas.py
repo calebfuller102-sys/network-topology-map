@@ -13,6 +13,7 @@ LinkKind = Literal["local", "virtual"]
 MonitorKind = Literal["icmp", "tcp", "http"]
 HttpScheme = Literal["http", "https"]
 Status = Literal["unknown", "online", "degraded", "offline"]
+ManualRunStatus = Literal["queued", "completed", "unavailable"]
 
 def _finite(value: float | None) -> float | None:
     if value is None:
@@ -300,7 +301,8 @@ class NodeStatusOut(StrictModel):
 
 class ManualRunOut(StrictModel):
     monitor_id: str
-    status: Literal["queued"]
+    run_id: str
+    status: ManualRunStatus
 
 
 class MapSnapshot(StrictModel):

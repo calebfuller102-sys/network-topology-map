@@ -5,11 +5,12 @@ product specification is in [docs/product-spec.md](docs/product-spec.md).
 
 ## Current status
 
-M0–M5 are implemented. M6 packaging groundwork is implemented: digest-pinned
-Dockerfiles, a private API gateway layout, optional NPM and ICMP overlays,
-checksummed offline image transfer, and SQLite backup/restore procedures. The
-remaining project state and phase gates are tracked in
-[docs/roadmap.md](docs/roadmap.md).
+M0–M5 and Phase 7's local monitor editor/diagnostics work are implemented. M6
+packaging groundwork is implemented: digest-pinned Dockerfiles, a private API
+gateway layout, optional NPM and ICMP overlays, checksummed offline image
+transfer, and SQLite backup/restore procedures. The remaining project state and
+phase gates are tracked in [docs/roadmap.md](docs/roadmap.md). M6 remains open
+until its actual target-host checks pass.
 
 This checkout does not have Docker Engine/Compose available, so container image
 builds and target deployment checks have not been performed here. The owner's

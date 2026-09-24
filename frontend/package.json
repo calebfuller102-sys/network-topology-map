@@ -7,7 +7,7 @@
     "dev": "vite",
     "generate:icons": "node scripts/generate-icons.mjs",
     "verify:assets": "node scripts/generate-icons.mjs --check",
-    "test:interactions": "node --test tests/interaction-state.test.ts tests/live-snapshot-sync.test.ts",
+    "test:interactions": "node --test tests/interaction-state.test.ts tests/live-snapshot-sync.test.ts tests/monitor-ui-state.test.ts tests/snapshot-coordinator.test.ts",
     "prebuild": "node scripts/generate-icons.mjs --check",
     "build": "vite build",
     "typecheck": "tsc --noEmit"

@@ -11,6 +11,9 @@ export type LinkKind = "local" | "virtual";
 
 export type Status = "unknown" | "online" | "degraded" | "offline";
 
+export type MonitorKind = "icmp" | "tcp" | "http";
+export type HttpScheme = "http" | "https";
+
 export interface MapRecord {
   id: string;
   name: string;
@@ -64,11 +67,11 @@ export interface MonitorResult {
 export interface MonitorRecord {
   id: string;
   node_id: string;
-  kind: "icmp" | "tcp" | "http";
+  kind: MonitorKind;
   enabled: boolean;
   target_ipv4: string;
   port: number | null;
-  scheme: "http" | "https" | null;
+  scheme: HttpScheme | null;
   path: string | null;
   host_header: string | null;
   verify_tls: boolean;
@@ -79,9 +82,39 @@ export interface MonitorRecord {
   result: MonitorResult | null;
 }
 
+/**
+ * The API accepts a complete monitor configuration for creation and safely
+ * merges these same fields for edits. Keeping the client payload complete
+ * avoids a separate, drifting frontend validation contract for PATCH.
+ */
+export interface MonitorPayload {
+  kind: MonitorKind;
+  enabled: boolean;
+  target_ipv4: string;
+  port: number | null;
+  scheme: HttpScheme | null;
+  path: string | null;
+  host_header: string | null;
+  verify_tls: boolean;
+  interval_seconds: number;
+  timeout_seconds: number;
+}
+
+export interface ManualRunResponse {
+  monitor_id: string;
+  run_id: string;
+  status: "queued";
+}
+
+export interface MonitorRunStatus {
+  monitor_id: string;
+  run_id: string;
+  status: "queued" | "completed" | "unavailable";
+}
+
 export interface MonitorSummary {
   id: string;
-  kind: MonitorRecord["kind"];
+  kind: MonitorKind;
   success: boolean | null;
   checked_at: string | null;
   error_code: string | null;

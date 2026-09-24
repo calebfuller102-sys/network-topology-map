@@ -1,10 +1,10 @@
 # Frontend package
 
-React/Vite SPA for the topology map. Phase 2 provides the API-backed vertical
-slice: load the saved Home map, search nodes locally, create/edit/delete nodes
-and links, persist drag positions and viewport state, and restore the graph
-after a reload. The local icon manifest and picker are included; monitor forms
-and live status updates are owned by later phases.
+React/Vite SPA for the topology map. It loads the saved Home map, searches,
+creates, edits, deletes, moves, and reconnects the topology after reloads.
+The local icon manifest and picker are included. Phase 7 adds compact monitor
+CRUD, per-check latest-result diagnostics, and receipt-based manual checks;
+live stream recovery reloads the authoritative snapshot after reconnecting.
 
 ## Local development
 

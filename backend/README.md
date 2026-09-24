@@ -2,7 +2,9 @@
 
 FastAPI/SQLAlchemy/Alembic application for the topology map. M4 includes a
 single lifespan-owned asynchronous monitor scheduler and bounded ICMP, TCP,
-and HTTP(S) checks. SSE remains a later milestone.
+and HTTP(S) checks. M5 adds revision-safe SSE updates and recovery; Phase 7
+uses the monitor CRUD and bounded manual-run receipt APIs for the inspector
+editor and diagnostics UI.
 
 ## Local development
 

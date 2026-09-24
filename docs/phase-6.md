@@ -45,4 +45,5 @@
 M6 implementation is present, but M6 is **not closed**. The owner environment
 must supply the target CPU platform and Docker/LXC/NPM access/configuration,
 then run the documented cold-start, routing, ICMP, NPM/SSE, restore, and
-WAN-disconnected checks. Phase 7 has not started.
+WAN-disconnected checks. Phase 7's local monitor-editor work is recorded in
+`docs/phase-7.md`; it does not satisfy any M6 target-host gate.

@@ -1,4 +1,17 @@
-import type { LinkPayload, LinkRecord, LinkKind, MapRecord, NodePayload, NodeRecord, Snapshot } from "../types";
+import type {
+  LinkPayload,
+  LinkRecord,
+  LinkKind,
+  ManualRunResponse,
+  MapRecord,
+  MonitorPayload,
+  MonitorRunStatus,
+  MonitorRecord,
+  NodePayload,
+  NodeRecord,
+  Snapshot,
+} from "../types";
+import { apiErrorInfo } from "./errors";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api/v1";
 
@@ -14,13 +27,6 @@ export class ApiError extends Error {
   }
 }
 
-interface ErrorEnvelope {
-  error?: {
-    code?: string;
-    message?: string;
-  };
-}
-
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -31,16 +37,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    let body: ErrorEnvelope = {};
+    let body: unknown;
     try {
-      body = (await response.json()) as ErrorEnvelope;
+      body = (await response.json()) as unknown;
     } catch {
       // Preserve the HTTP status when a gateway returns a non-JSON error.
     }
+    const error = apiErrorInfo(body, response.status);
     throw new ApiError(
       response.status,
-      body.error?.code ?? "request_failed",
-      body.error?.message ?? `Request failed with status ${response.status}`,
+      error.code,
+      error.message,
     );
   }
 
@@ -100,4 +107,24 @@ export const api = {
       body: JSON.stringify({ viewport_x, viewport_y, viewport_zoom }),
       keepalive,
     }),
+  createMonitor: (nodeId: string, payload: MonitorPayload) =>
+    request<MonitorRecord>(`/nodes/${nodeId}/monitors`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  patchMonitor: (monitorId: string, payload: MonitorPayload) =>
+    request<MonitorRecord>(`/monitors/${monitorId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  deleteMonitor: (monitorId: string) =>
+    request<void>(`/monitors/${monitorId}`, {
+      method: "DELETE",
+    }),
+  runMonitor: (monitorId: string) =>
+    request<ManualRunResponse>(`/monitors/${monitorId}/run`, {
+      method: "POST",
+    }),
+  getMonitorRun: (monitorId: string, runId: string) =>
+    request<MonitorRunStatus>(`/monitors/${monitorId}/runs/${runId}`),
 };

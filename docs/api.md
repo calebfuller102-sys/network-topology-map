@@ -16,14 +16,24 @@ creation rejects self-links, cross-map endpoints, and duplicate endpoint/type
 pairs.
 
 Monitor routes support list/create under a node and patch/delete by monitor ID.
-`POST /api/v1/monitors/{monitor_id}/run` returns `202` with a queued response;
-it never waits for a target. Enabled monitors are checked immediately after
-creation or configuration changes, then on their configured interval. A
-single scheduler runs in the API lifespan; active checks are capped by
-`MONITOR_CONCURRENCY` (default 8). Configuration changes cancel the prior run
-where possible and clear its result until the new configuration has a fresh
-check. Repeated manual requests coalesce to at most one additional run while a
-check is active. Disabled and deleted monitors are removed from scheduling.
+`POST /api/v1/monitors/{monitor_id}/run` returns `202` with a queued
+`monitor_id` and opaque `run_id`; it never waits for a target or calls a queued
+check successful. `GET /api/v1/monitors/{monitor_id}/runs/{run_id}` exposes a
+bounded, short-lived receipt with `queued`, `completed`, or `unavailable`.
+`completed` only confirms that the exact manual execution persisted a latest
+result; the result itself reports pass or failure. A receipt becomes
+`unavailable` after cancellation, a configuration/deletion change, persistence
+failure, scheduler/API restart, expiry, or an invalid/mismatched ID. Receipts
+are not monitoring history, so the browser reloads the authoritative snapshot
+when a receipt reaches a terminal state or live recovery occurs.
+
+Enabled monitors are checked immediately after creation or configuration
+changes, then on their configured interval. A single scheduler runs in the API
+lifespan; active checks are capped by `MONITOR_CONCURRENCY` (default 8).
+Configuration changes cancel the prior run where possible and clear its result
+until the new configuration has a fresh check. Repeated manual requests
+coalesce to at most one additional run while a check is active. Disabled and
+deleted monitors are removed from scheduling.
 
 ICMP invokes the local system `ping` utility; TCP uses asynchronous socket
 connect; HTTP(S) uses GET without following redirects or downloading the

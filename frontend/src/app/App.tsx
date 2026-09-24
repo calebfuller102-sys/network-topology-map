@@ -16,10 +16,21 @@ import { api } from "../api/client";
 import { LinkInspector } from "../components/LinkInspector";
 import { NodeInspector } from "../components/NodeInspector";
 import { TopologyNode, type TopologyFlowNode } from "../components/TopologyNode";
-import type { LinkPayload, NodePayload, NodeRecord, Snapshot, Status } from "../types";
+import type {
+  LinkPayload,
+  ManualRunResponse,
+  MonitorPayload,
+  MonitorRecord,
+  MonitorRunStatus,
+  NodePayload,
+  NodeRecord,
+  Snapshot,
+  Status,
+} from "../types";
 import { applyNodePositionChanges, draftResetKey } from "./editorState";
 import { NodePositionPersistence } from "./nodePositionPersistence";
-import { LiveSnapshotSync } from "./liveSnapshotSync";
+import { LiveSnapshotSync, type SnapshotLoadResult } from "./liveSnapshotSync";
+import { SnapshotCoordinator } from "./snapshotCoordinator";
 import { ViewportPersistence } from "./viewportPersistence";
 
 type FlowNode = TopologyFlowNode;
@@ -95,6 +106,30 @@ function AppContent() {
   const nodePositionPersistence = useRef<NodePositionPersistence | null>(null);
   const viewportPersistence = useRef<ViewportPersistence | null>(null);
   const viewportMapId = useRef<string | null>(null);
+  const snapshotCoordinator = useRef(new SnapshotCoordinator());
+
+  const applySnapshot = useCallback((result: SnapshotLoadResult): boolean => {
+    if (!snapshotCoordinator.current.shouldApply(result.snapshot, result.request)) {
+      return false;
+    }
+    setSnapshot(result.snapshot);
+    return true;
+  }, []);
+
+  const fetchSnapshot = useCallback(async (preferredMapId?: string): Promise<Snapshot> => {
+    const maps = await api.listMaps();
+    if (maps.length === 0) {
+      throw new Error("No map is available. The API should create a Home map during startup.");
+    }
+    const selectedMap = maps.find((map) => map.id === preferredMapId) ?? maps[0];
+    return api.getSnapshot(selectedMap.id);
+  }, []);
+
+  const requestSnapshot = useCallback(async (preferredMapId?: string): Promise<SnapshotLoadResult> => {
+    const request = snapshotCoordinator.current.beginRequest();
+    const nextSnapshot = await fetchSnapshot(preferredMapId);
+    return { snapshot: nextSnapshot, request };
+  }, [fetchSnapshot]);
 
   const loadSnapshot = useCallback(async (preferredMapId?: string, showLoading = true): Promise<Snapshot | null> => {
     if (showLoading) {
@@ -102,14 +137,9 @@ function AppContent() {
     }
     setError(null);
     try {
-      const maps = await api.listMaps();
-      if (maps.length === 0) {
-        throw new Error("No map is available. The API should create a Home map during startup.");
-      }
-      const selectedMap = maps.find((map) => map.id === preferredMapId) ?? maps[0];
-      const nextSnapshot = await api.getSnapshot(selectedMap.id);
-      setSnapshot(nextSnapshot);
-      return nextSnapshot;
+      const result = await requestSnapshot(preferredMapId);
+      applySnapshot(result);
+      return result.snapshot;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to load the topology map.");
       return null;
@@ -118,7 +148,7 @@ function AppContent() {
         setLoading(false);
       }
     }
-  }, []);
+  }, [applySnapshot, requestSnapshot]);
 
   useEffect(() => {
     void loadSnapshot();
@@ -132,15 +162,12 @@ function AppContent() {
     const sync = new LiveSnapshotSync({
       eventUrl: api.eventsUrl,
       loadSnapshot: async () => {
-        const nextSnapshot = await loadSnapshot(mapId, false);
-        if (!nextSnapshot) {
-          throw new Error("Unable to refresh the topology map.");
-        }
-        return nextSnapshot;
+        return requestSnapshot(mapId);
       },
-      onSnapshot: (nextSnapshot) => {
-        setSnapshot(nextSnapshot);
-        setError(null);
+      onSnapshot: (result) => {
+        if (applySnapshot(result)) {
+          setError(null);
+        }
       },
       onConnectionChange: setLiveConnected,
       onError: (cause) => {
@@ -149,7 +176,7 @@ function AppContent() {
     });
     sync.start(snapshot);
     return () => sync.dispose();
-  }, [loadSnapshot, snapshot?.map.id]);
+  }, [applySnapshot, requestSnapshot, snapshot?.map.id]);
 
   useEffect(() => () => {
     viewportPersistence.current?.dispose();
@@ -193,6 +220,10 @@ function AppContent() {
   const selectedLink = useMemo(
     () => snapshot?.links.find((link) => link.id === selectedLinkId) ?? null,
     [selectedLinkId, snapshot],
+  );
+  const selectedMonitors = useMemo(
+    () => selectedNode ? snapshot?.monitors.filter((monitor) => monitor.node_id === selectedNode.id) ?? [] : [],
+    [selectedNode, snapshot?.monitors],
   );
 
   const defaultPosition = useMemo(() => {
@@ -304,6 +335,61 @@ function AppContent() {
       setSaving(false);
     }
   }, [loadSnapshot, selectedNode, snapshot]);
+
+  const refreshMonitorSnapshot = useCallback(async (): Promise<void> => {
+    const currentMapId = snapshot?.map.id;
+    if (!currentMapId) {
+      throw new Error("No map is available for monitor diagnostics.");
+    }
+    const nextSnapshot = await loadSnapshot(currentMapId, false);
+    if (!nextSnapshot) {
+      throw new Error("Unable to refresh monitor diagnostics.");
+    }
+  }, [loadSnapshot, snapshot?.map.id]);
+
+  const createMonitor = useCallback(async (nodeId: string, payload: MonitorPayload): Promise<MonitorRecord> => {
+    setSaving(true);
+    setError(null);
+    try {
+      const saved = await api.createMonitor(nodeId, payload);
+      await refreshMonitorSnapshot();
+      setNotice("Check added");
+      return saved;
+    } finally {
+      setSaving(false);
+    }
+  }, [refreshMonitorSnapshot]);
+
+  const updateMonitor = useCallback(async (monitorId: string, payload: MonitorPayload): Promise<MonitorRecord> => {
+    setSaving(true);
+    setError(null);
+    try {
+      const saved = await api.patchMonitor(monitorId, payload);
+      await refreshMonitorSnapshot();
+      setNotice("Check saved");
+      return saved;
+    } finally {
+      setSaving(false);
+    }
+  }, [refreshMonitorSnapshot]);
+
+  const deleteMonitor = useCallback(async (monitorId: string): Promise<void> => {
+    setSaving(true);
+    setError(null);
+    try {
+      await api.deleteMonitor(monitorId);
+      await refreshMonitorSnapshot();
+      setNotice("Check deleted");
+    } finally {
+      setSaving(false);
+    }
+  }, [refreshMonitorSnapshot]);
+
+  const runMonitor = useCallback((monitorId: string): Promise<ManualRunResponse> => api.runMonitor(monitorId), []);
+  const getMonitorRun = useCallback(
+    (monitorId: string, runId: string): Promise<MonitorRunStatus> => api.getMonitorRun(monitorId, runId),
+    [],
+  );
 
   const deleteSelectedNode = useCallback(async () => {
     if (!selectedNode) return;
@@ -575,6 +661,14 @@ function AppContent() {
             }}
             onSave={saveNode}
             onDelete={deleteSelectedNode}
+            monitors={selectedMonitors}
+            liveConnected={liveConnected}
+            onCreateMonitor={createMonitor}
+            onUpdateMonitor={updateMonitor}
+            onDeleteMonitor={deleteMonitor}
+            onRunMonitor={runMonitor}
+            onGetMonitorRun={getMonitorRun}
+            onRefreshMonitors={refreshMonitorSnapshot}
           />
         ) : (
           <aside className="inspector inspector-empty">

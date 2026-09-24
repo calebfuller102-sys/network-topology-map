@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import socket
 
 import pytest
 from app.monitoring.checks import MonitorCheck, run_check
@@ -75,6 +76,23 @@ async def test_tcp_refusal_is_classified(monkeypatch: pytest.MonkeyPatch) -> Non
     refused = await run_check(check("tcp", port=1))
     assert not refused.success
     assert refused.error_code == "connection_refused"
+
+
+@pytest.mark.asyncio
+async def test_tcp_name_resolution_failure_is_classified_defensively(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Public API validation only accepts IPv4 literals. This fixture proves a
+    # malformed/imported persisted target still produces a useful diagnostic.
+    async def fail_resolution(*_args, **_kwargs):
+        raise socket.gaierror(socket.EAI_NONAME, "fixture resolution failure")
+
+    monkeypatch.setattr(asyncio, "open_connection", fail_resolution)
+    result = await run_check(check("tcp", target_ipv4="legacy-target", port=1))
+
+    assert not result.success
+    assert result.error_code == "dns_error"
+    assert result.error_message == "The monitor target could not be resolved"
 
 
 @pytest.mark.asyncio

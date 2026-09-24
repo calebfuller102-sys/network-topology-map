@@ -1,5 +1,14 @@
 import { useEffect, useState } from "react";
-import type { NodeKind, NodePayload, NodeRecord } from "../types";
+import { MonitorPanel } from "./MonitorPanel";
+import type {
+  ManualRunResponse,
+  MonitorPayload,
+  MonitorRecord,
+  MonitorRunStatus,
+  NodeKind,
+  NodePayload,
+  NodeRecord,
+} from "../types";
 import { isAllowlistedIconId, matchingIcons } from "../icons";
 import { mergeExternalPosition } from "../app/editorState";
 
@@ -13,6 +22,14 @@ export interface NodeInspectorProps {
   onCancel: () => void;
   onSave: (payload: NodePayload) => Promise<void>;
   onDelete: () => Promise<void>;
+  monitors: MonitorRecord[];
+  liveConnected: boolean;
+  onCreateMonitor: (nodeId: string, payload: MonitorPayload) => Promise<MonitorRecord>;
+  onUpdateMonitor: (monitorId: string, payload: MonitorPayload) => Promise<MonitorRecord>;
+  onDeleteMonitor: (monitorId: string) => Promise<void>;
+  onRunMonitor: (monitorId: string) => Promise<ManualRunResponse>;
+  onGetMonitorRun: (monitorId: string, runId: string) => Promise<MonitorRunStatus>;
+  onRefreshMonitors: () => Promise<void>;
 }
 
 function initialDraft(node: NodeRecord | null, defaultPosition: { x: number; y: number }): NodePayload {
@@ -37,7 +54,23 @@ function initialDraft(node: NodeRecord | null, defaultPosition: { x: number; y: 
       };
 }
 
-export function NodeInspector({ node, defaultPosition, resetKey, saving, onCancel, onSave, onDelete }: NodeInspectorProps) {
+export function NodeInspector({
+  node,
+  defaultPosition,
+  resetKey,
+  saving,
+  onCancel,
+  onSave,
+  onDelete,
+  monitors,
+  liveConnected,
+  onCreateMonitor,
+  onUpdateMonitor,
+  onDeleteMonitor,
+  onRunMonitor,
+  onGetMonitorRun,
+  onRefreshMonitors,
+}: NodeInspectorProps) {
   const [draft, setDraft] = useState<NodePayload>(() => initialDraft(node, defaultPosition));
   const iconMatches = matchingIcons(draft.icon_id).slice(0, 6);
   const validIconId = isAllowlistedIconId(draft.icon_id);
@@ -182,6 +215,20 @@ export function NodeInspector({ node, defaultPosition, resetKey, saving, onCance
           </button>
         ) : null}
       </form>
+      {node ? (
+        <MonitorPanel
+          node={node}
+          monitors={monitors}
+          saving={saving}
+          liveConnected={liveConnected}
+          onCreate={onCreateMonitor}
+          onUpdate={onUpdateMonitor}
+          onDelete={onDeleteMonitor}
+          onRun={onRunMonitor}
+          onGetRun={onGetMonitorRun}
+          onRefresh={onRefreshMonitors}
+        />
+      ) : null}
     </aside>
   );
 }

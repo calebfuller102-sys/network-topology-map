@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import errno
 import platform
+import socket
 import ssl
 import time
 from dataclasses import dataclass
@@ -117,6 +118,11 @@ async def _tcp(check: MonitorCheck) -> CheckOutcome:
     except TimeoutError:
         return _failure("timeout", "TCP connection timed out", started)
     except OSError as exc:
+        # The API only accepts IPv4 input, so this is defensive handling for a
+        # malformed or imported legacy configuration.  It still lets the
+        # diagnostics UI explain the actual transport failure precisely.
+        if _has_cause(exc, (socket.gaierror,)):
+            return _failure("dns_error", "The monitor target could not be resolved", started)
         if isinstance(exc, ConnectionRefusedError) or exc.errno in {errno.ECONNREFUSED, 10061}:
             return _failure("connection_refused", "TCP connection was refused", started)
         if exc.errno in {errno.ENETUNREACH, errno.EHOSTUNREACH, 10051, 10065}:
@@ -157,6 +163,8 @@ async def _http(check: MonitorCheck) -> CheckOutcome:
     except (TimeoutError, httpx.TimeoutException):
         return _failure("timeout", "HTTP request timed out", started)
     except httpx.ConnectError as exc:
+        if _has_cause(exc, (socket.gaierror,)):
+            return _failure("dns_error", "The monitor target could not be resolved", started)
         if _has_cause(exc, (ssl.SSLError,)):
             return _failure("tls_error", "HTTPS certificate validation failed", started)
         if _has_cause(exc, (ConnectionRefusedError,)):
@@ -165,7 +173,9 @@ async def _http(check: MonitorCheck) -> CheckOutcome:
         if isinstance(cause, OSError) and cause.errno in {errno.ECONNREFUSED, 10061}:
             return _failure("connection_refused", "HTTP connection was refused", started)
         return _failure("connection_error", "HTTP connection failed", started)
-    except httpx.RequestError:
+    except httpx.RequestError as exc:
+        if _has_cause(exc, (socket.gaierror,)):
+            return _failure("dns_error", "The monitor target could not be resolved", started)
         return _failure("request_error", "HTTP request failed", started)
     except (ValueError, ssl.SSLError):
         return _failure("tls_error", "HTTPS certificate validation failed", started)

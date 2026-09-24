@@ -427,9 +427,13 @@ async def patch_monitor(
     values = {field: getattr(item, field) for field in MonitorFields.model_fields}
     values.update(payload.model_dump(exclude_unset=True))
     validated = MonitorFields.model_validate(values)
-    for field, value in validated.model_dump().items():
-        if field == "target_ipv4":
-            value = str(value)
+    normalized_values = validated.model_dump()
+    normalized_values["target_ipv4"] = str(normalized_values["target_ipv4"])
+    if all(getattr(item, field) == value for field, value in normalized_values.items()):
+        # The Phase 7 editor submits an explicit form payload. A no-op save is
+        # not a configuration change and must keep the useful latest result.
+        return monitor_out(item, db.info["process_started_at"])
+    for field, value in normalized_values.items():
         setattr(item, field, value)
     # Results belong to the exact configuration that produced them. Clear the
     # prior result so a changed target/settings returns to unknown until checked.
@@ -471,9 +475,29 @@ async def run_monitor_now(
     if scheduler is None:
         raise ApiError(503, "scheduler_unavailable", "Monitor scheduler is unavailable")
     try:
-        await scheduler.run_now(monitor_id)
+        receipt = await scheduler.run_now(monitor_id)
     except SchedulerUnavailableError as exc:
         raise ApiError(503, "scheduler_unavailable", "Monitor scheduler is unavailable") from exc
     except LookupError as exc:
         raise ApiError(409, "monitor_disabled", "Monitor is no longer enabled") from exc
-    return ManualRunOut(monitor_id=monitor_id, status="queued")
+    return ManualRunOut(
+        monitor_id=receipt.monitor_id,
+        run_id=receipt.run_id,
+        status=receipt.status,
+    )
+
+
+@router.get("/monitors/{monitor_id}/runs/{run_id}", response_model=ManualRunOut)
+async def get_monitor_run(
+    monitor_id: str, run_id: str, request: Request
+) -> ManualRunOut:
+    """Read an ephemeral manual-run receipt without treating it as history."""
+    scheduler = request.app.state.scheduler
+    if scheduler is None:
+        return ManualRunOut(monitor_id=monitor_id, run_id=run_id, status="unavailable")
+    receipt = await scheduler.get_manual_run(monitor_id, run_id)
+    return ManualRunOut(
+        monitor_id=receipt.monitor_id,
+        run_id=receipt.run_id,
+        status=receipt.status,
+    )
