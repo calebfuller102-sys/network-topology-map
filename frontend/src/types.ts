@@ -95,6 +95,7 @@ export interface NodeStatus {
 }
 
 export interface Snapshot {
+  revision: number;
   map: MapRecord;
   nodes: NodeRecord[];
   links: LinkRecord[];

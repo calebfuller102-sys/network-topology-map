@@ -51,6 +51,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  eventsUrl: (mapId: string, after: number) =>
+    `${API_BASE}/maps/${encodeURIComponent(mapId)}/events?after=${encodeURIComponent(String(after))}`,
   listMaps: () => request<MapRecord[]>("/maps"),
   getSnapshot: (mapId: string) => request<Snapshot>(`/maps/${mapId}/snapshot`),
   createNode: (mapId: string, payload: NodePayload) =>

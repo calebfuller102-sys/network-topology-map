@@ -304,6 +304,7 @@ class ManualRunOut(StrictModel):
 
 
 class MapSnapshot(StrictModel):
+    revision: int
     map: MapOut
     nodes: list[NodeOut]
     links: list[LinkOut]

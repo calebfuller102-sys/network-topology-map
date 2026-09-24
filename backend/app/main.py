@@ -13,6 +13,7 @@ from .api.routes import router
 from .config import Settings
 from .db import Database
 from .errors import ApiError
+from .events import EventBroker
 from .models import Map
 from .monitoring.scheduler import CheckFunction, MonitorScheduler
 from .schemas import HealthzOut
@@ -48,10 +49,12 @@ def create_app(
         )
     database = Database(settings.database_url)
     process_started_at = database.process_started_at
+    event_broker = EventBroker()
     scheduler = MonitorScheduler(
         database,
         concurrency=settings.monitor_concurrency,
         checker=monitor_checker,
+        event_publisher=event_broker.publish,
     )
 
     @asynccontextmanager
@@ -72,6 +75,7 @@ def create_app(
                     )
                 )
                 session.commit()
+        await event_broker.start()
         if start_monitor_scheduler:
             await scheduler.start()
         try:
@@ -79,11 +83,13 @@ def create_app(
         finally:
             if start_monitor_scheduler:
                 await scheduler.stop()
+            await event_broker.stop()
             database.dispose()
 
     app = FastAPI(title="Network Topology API", version="0.1.0", lifespan=lifespan)
     app.state.db = database
     app.state.process_started_at = process_started_at
+    app.state.event_broker = event_broker
     app.state.scheduler = scheduler if start_monitor_scheduler else None
     app.include_router(router)
 

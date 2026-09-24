@@ -182,7 +182,7 @@ def test_repeated_startup_persists_migration_and_stale_result(tmp_path: Path) ->
             revision = connection.exec_driver_sql(
                 "SELECT version_num FROM alembic_version"
             ).scalar()
-        assert revision == "0001_initial"
+        assert revision == "0002_map_events"
 
 
 def test_monitor_edit_and_disable_clear_prior_result(tmp_path: Path) -> None:

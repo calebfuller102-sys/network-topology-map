@@ -40,6 +40,21 @@ class Map(Base):
     links: Mapped[list[Link]] = relationship(
         back_populates="map", cascade="all, delete-orphan", passive_deletes=True
     )
+    events: Mapped[list[MapEvent]] = relationship(
+        back_populates="map", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class MapEvent(Base):
+    __tablename__ = "map_events"
+    __table_args__ = (Index("ix_map_events_map_revision", "map_id", "id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    map_id: Mapped[str] = mapped_column(ForeignKey("maps.id", ondelete="CASCADE"), nullable=False)
+    kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False, default=utc_timestamp)
+
+    map: Mapped[Map] = relationship(back_populates="events")
 
 
 class Node(Base):

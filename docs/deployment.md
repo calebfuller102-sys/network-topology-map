@@ -37,11 +37,14 @@ These are code-inspection findings, not host validation results.
   document a least-access monitoring egress network while retaining no
   published API host port, then test routes from inside the actual API
   container. No Docker/LXC routing result has been claimed here.
-- The snapshot route now begins an explicit SQLite read transaction before its
-  related graph queries, so one HTTP snapshot does not mix rows around a
-  concurrent write. M5 still needs a revision/cursor design spanning that
-  snapshot and the SSE subscription, plus a mutation-during-handoff test; a
-  consistent HTTP read alone cannot close the snapshot-to-subscribe race.
+- The snapshot route begins an explicit SQLite read transaction before its
+  related graph queries, including its per-map event revision. M5 stores a
+  bounded per-map handoff journal in the same transaction as each topology or
+  status mutation; the browser subscribes with the snapshot revision and the
+  server replays later events or requires a fresh snapshot when that bounded
+  cursor has expired. `frontend/nginx.conf` disables proxy buffering and sets
+  a long SSE read timeout. M6 must install and exercise that configuration in
+  the actual web image and NPM path; no gateway/container result is claimed.
 - HTTPS monitoring intentionally connects to the configured IPv4 URL. With
   TLS verification enabled, the certificate must contain that IPv4 address in
   its SAN; an HTTP `Host` header changes routing only and cannot supply TLS

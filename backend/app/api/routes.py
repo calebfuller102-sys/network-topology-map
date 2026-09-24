@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import asyncio
+import json
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..errors import ApiError
+from ..events import EventBroker, TopologyEvent, append_event, load_event_replay, snapshot_revision
 from ..models import Link, Map, Monitor, Node
 from ..monitoring.scheduler import SchedulerUnavailableError
 from ..schemas import (
@@ -72,6 +76,16 @@ def _commit(db: Session) -> None:
         ) from exc
 
 
+def _commit_event(db: Session, map_id: str, kind: str) -> TopologyEvent:
+    event = append_event(db, map_id, kind)
+    _commit(db)
+    return event
+
+
+def _publish_event(request: Request, event: TopologyEvent) -> None:
+    request.app.state.event_broker.publish_threadsafe(event)
+
+
 def _touch(item: Map | Node | Monitor) -> None:
     item.updated_at = utc_iso()
 
@@ -93,12 +107,15 @@ def get_map(map_id: str, db: Session = Depends(get_db)) -> Map:
 
 
 @router.patch("/maps/{map_id}", response_model=MapOut)
-def patch_map(map_id: str, payload: MapPatch, db: Session = Depends(get_db)) -> Map:
+def patch_map(
+    map_id: str, payload: MapPatch, request: Request, db: Session = Depends(get_db)
+) -> Map:
     item = _map_or_404(db, map_id)
     for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(item, field, value)
     _touch(item)
-    _commit(db)
+    event = _commit_event(db, map_id, "topology.changed")
+    _publish_event(request, event)
     return item
 
 
@@ -133,6 +150,7 @@ def get_snapshot(map_id: str, db: Session = Depends(get_db)) -> MapSnapshot:
             monitors = []
         started_at = db.info["process_started_at"]
         return MapSnapshot(
+            revision=snapshot_revision(db, map_id),
             map=MapOut.model_validate(item),
             nodes=[NodeOut.model_validate(node) for node in nodes],
             links=[LinkOut.model_validate(link) for link in links],
@@ -145,6 +163,74 @@ def get_snapshot(map_id: str, db: Session = Depends(get_db)) -> MapSnapshot:
         db.rollback()
 
 
+def _cursor_from_request(request: Request, after: int | None) -> int:
+    if after is not None:
+        return after
+    last_event_id = request.headers.get("last-event-id")
+    if last_event_id and last_event_id.isdecimal():
+        return int(last_event_id)
+    return 0
+
+
+def _encode_sse(event: TopologyEvent) -> str:
+    return (
+        f"id: {event.revision}\n"
+        f"event: {event.kind}\n"
+        f"data: {json.dumps(event.as_dict(), separators=(',', ':'))}\n\n"
+    )
+
+
+async def _stream_map_events(
+    request: Request, map_id: str, after: int, broker: EventBroker
+):
+    """Subscribe first, then replay the journal so its query cannot lose a write."""
+    database = request.app.state.db
+    async with broker.subscribe(map_id) as queue:
+        replay = await asyncio.to_thread(load_event_replay, database, map_id, after)
+        cursor = after
+        # Emit immediately so an intermediary commits response headers and a
+        # test/client does not wait for the first topology change.
+        yield ": connected\n\n"
+        if replay.resync_required:
+            cursor = max(cursor, replay.latest_revision)
+            yield _encode_sse(TopologyEvent(map_id, replay.latest_revision, "resync.required"))
+        else:
+            for event in replay.events:
+                if event.revision > cursor:
+                    cursor = event.revision
+                    yield _encode_sse(event)
+        while not await request.is_disconnected():
+            try:
+                event = await asyncio.wait_for(queue.get(), timeout=15)
+            except TimeoutError:
+                yield ": keepalive\n\n"
+                continue
+            if event.revision <= cursor:
+                continue
+            cursor = event.revision
+            yield _encode_sse(event)
+
+
+@router.get("/maps/{map_id}/events")
+async def stream_map_events(
+    map_id: str,
+    request: Request,
+    after: int | None = Query(default=None, ge=0),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    _map_or_404(db, map_id)
+    db.close()
+    cursor = _cursor_from_request(request, after)
+    return StreamingResponse(
+        _stream_map_events(request, map_id, cursor, request.app.state.event_broker),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.get("/maps/{map_id}/nodes", response_model=list[NodeOut])
 def list_nodes(map_id: str, db: Session = Depends(get_db)) -> list[Node]:
     _map_or_404(db, map_id)
@@ -152,7 +238,9 @@ def list_nodes(map_id: str, db: Session = Depends(get_db)) -> list[Node]:
 
 
 @router.post("/maps/{map_id}/nodes", response_model=NodeOut, status_code=status.HTTP_201_CREATED)
-def create_node(map_id: str, payload: NodeCreate, db: Session = Depends(get_db)) -> Node:
+def create_node(
+    map_id: str, payload: NodeCreate, request: Request, db: Session = Depends(get_db)
+) -> Node:
     _map_or_404(db, map_id)
     item = Node(
         id=str(uuid4()),
@@ -166,7 +254,8 @@ def create_node(map_id: str, payload: NodeCreate, db: Session = Depends(get_db))
         y=payload.y,
     )
     db.add(item)
-    _commit(db)
+    event = _commit_event(db, map_id, "topology.changed")
+    _publish_event(request, event)
     return item
 
 
@@ -176,7 +265,9 @@ def get_node(node_id: str, db: Session = Depends(get_db)) -> Node:
 
 
 @router.patch("/nodes/{node_id}", response_model=NodeOut)
-def patch_node(node_id: str, payload: NodePatch, db: Session = Depends(get_db)) -> Node:
+def patch_node(
+    node_id: str, payload: NodePatch, request: Request, db: Session = Depends(get_db)
+) -> Node:
     item = _node_or_404(db, node_id)
     values = payload.model_dump(exclude_unset=True)
     if "ipv4" in values:
@@ -184,27 +275,31 @@ def patch_node(node_id: str, payload: NodePatch, db: Session = Depends(get_db)) 
     for field, value in values.items():
         setattr(item, field, value)
     _touch(item)
-    _commit(db)
+    event = _commit_event(db, item.map_id, "topology.changed")
+    _publish_event(request, event)
     return item
 
 
 @router.patch("/nodes/{node_id}/position", response_model=NodeOut)
 def patch_node_position(
-    node_id: str, payload: PositionPatch, db: Session = Depends(get_db)
+    node_id: str, payload: PositionPatch, request: Request, db: Session = Depends(get_db)
 ) -> Node:
     item = _node_or_404(db, node_id)
     item.x = payload.x
     item.y = payload.y
     _touch(item)
-    _commit(db)
+    event = _commit_event(db, item.map_id, "topology.changed")
+    _publish_event(request, event)
     return item
 
 
 @router.delete("/nodes/{node_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_node(node_id: str, request: Request, db: Session = Depends(get_db)) -> None:
     item = _node_or_404(db, node_id)
+    event = append_event(db, item.map_id, "topology.changed")
     db.delete(item)
     _commit(db)
+    _publish_event(request, event)
     db.close()
     await _refresh_scheduler(request)
 
@@ -216,7 +311,9 @@ def list_links(map_id: str, db: Session = Depends(get_db)) -> list[Link]:
 
 
 @router.post("/maps/{map_id}/links", response_model=LinkOut, status_code=status.HTTP_201_CREATED)
-def create_link(map_id: str, payload: LinkCreate, db: Session = Depends(get_db)) -> Link:
+def create_link(
+    map_id: str, payload: LinkCreate, request: Request, db: Session = Depends(get_db)
+) -> Link:
     _map_or_404(db, map_id)
     source = _node_or_404(db, payload.source_node_id)
     target = _node_or_404(db, payload.target_node_id)
@@ -243,12 +340,15 @@ def create_link(map_id: str, payload: LinkCreate, db: Session = Depends(get_db))
         kind=payload.kind,
     )
     db.add(item)
-    _commit(db)
+    event = _commit_event(db, map_id, "topology.changed")
+    _publish_event(request, event)
     return item
 
 
 @router.patch("/links/{link_id}", response_model=LinkOut)
-def patch_link(link_id: str, payload: LinkPatch, db: Session = Depends(get_db)) -> Link:
+def patch_link(
+    link_id: str, payload: LinkPatch, request: Request, db: Session = Depends(get_db)
+) -> Link:
     item = _link_or_404(db, link_id)
     if item.kind != payload.kind:
         duplicate = db.scalar(
@@ -263,15 +363,18 @@ def patch_link(link_id: str, payload: LinkPatch, db: Session = Depends(get_db)) 
         if duplicate is not None:
             raise ApiError(409, "duplicate_link", "This link already exists")
         item.kind = payload.kind
-        _commit(db)
+        event = _commit_event(db, item.map_id, "topology.changed")
+        _publish_event(request, event)
     return item
 
 
 @router.delete("/links/{link_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_link(link_id: str, db: Session = Depends(get_db)) -> None:
+def delete_link(link_id: str, request: Request, db: Session = Depends(get_db)) -> None:
     item = _link_or_404(db, link_id)
+    event = append_event(db, item.map_id, "topology.changed")
     db.delete(item)
     _commit(db)
+    _publish_event(request, event)
 
 
 @router.get("/nodes/{node_id}/monitors", response_model=list[MonitorOut])
@@ -290,7 +393,7 @@ def list_monitors(node_id: str, db: Session = Depends(get_db)) -> list[MonitorOu
 async def create_monitor(
     node_id: str, payload: MonitorCreate, request: Request, db: Session = Depends(get_db)
 ) -> MonitorOut:
-    _node_or_404(db, node_id)
+    node = _node_or_404(db, node_id)
     item = Monitor(
         id=str(uuid4()),
         node_id=node_id,
@@ -306,7 +409,8 @@ async def create_monitor(
         timeout_seconds=payload.timeout_seconds,
     )
     db.add(item)
-    _commit(db)
+    event = _commit_event(db, node.map_id, "topology.changed")
+    _publish_event(request, event)
     started_at = db.info["process_started_at"]
     response = monitor_out(item, started_at)
     db.close()
@@ -319,6 +423,7 @@ async def patch_monitor(
     monitor_id: str, payload: MonitorPatch, request: Request, db: Session = Depends(get_db)
 ) -> MonitorOut:
     item = _monitor_or_404(db, monitor_id)
+    map_id = item.node.map_id
     values = {field: getattr(item, field) for field in MonitorFields.model_fields}
     values.update(payload.model_dump(exclude_unset=True))
     validated = MonitorFields.model_validate(values)
@@ -330,7 +435,8 @@ async def patch_monitor(
     # prior result so a changed target/settings returns to unknown until checked.
     item.result = None
     _touch(item)
-    _commit(db)
+    event = _commit_event(db, map_id, "topology.changed")
+    _publish_event(request, event)
     started_at = db.info["process_started_at"]
     response = monitor_out(item, started_at)
     db.close()
@@ -343,8 +449,10 @@ async def delete_monitor(
     monitor_id: str, request: Request, db: Session = Depends(get_db)
 ) -> None:
     item = _monitor_or_404(db, monitor_id)
+    event = append_event(db, item.node.map_id, "topology.changed")
     db.delete(item)
     _commit(db)
+    _publish_event(request, event)
     db.close()
     await _refresh_scheduler(request)
 

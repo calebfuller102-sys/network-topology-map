@@ -9,11 +9,13 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 
 from ..db import Database
-from ..models import Monitor, MonitorResult
+from ..events import TopologyEvent, append_event
+from ..models import Monitor, MonitorResult, Node
 from ..time import utc_iso
 from .checks import CheckOutcome, MonitorCheck, run_check
 
 CheckFunction = Callable[[MonitorCheck], Awaitable[CheckOutcome]]
+EventPublisher = Callable[[TopologyEvent], Awaitable[None]]
 logger = logging.getLogger(__name__)
 
 
@@ -54,12 +56,14 @@ class MonitorScheduler:
         *,
         concurrency: int = 8,
         checker: CheckFunction | None = None,
+        event_publisher: EventPublisher | None = None,
         poll_seconds: float = 0.25,
         reconcile_seconds: float = 5.0,
     ) -> None:
         self.database = database
         self.concurrency = concurrency
         self.checker = checker or run_check
+        self.event_publisher = event_publisher
         self.poll_seconds = poll_seconds
         self.reconcile_seconds = reconcile_seconds
         self._entries: dict[str, _Entry] = {}
@@ -231,9 +235,19 @@ class MonitorScheduler:
                 is_current = entry is not None and entry.generation == generation
             if is_current and not self._stopping:
                 try:
-                    await asyncio.to_thread(self._save_result, check, outcome)
+                    event = await asyncio.to_thread(self._save_result, check, outcome)
                 except Exception:
                     logger.exception("Failed to persist result for monitor %s", check.monitor_id)
+                else:
+                    if event is not None and self.event_publisher is not None:
+                        try:
+                            await self.event_publisher(event)
+                        except Exception:
+                            # The committed journal entry remains available on
+                            # reconnect even if immediate in-memory fanout fails.
+                            logger.exception(
+                                "Failed to publish result event for monitor %s", check.monitor_id
+                            )
         finally:
             async with self._lock:
                 entry = self._entries.get(check.monitor_id)
@@ -249,11 +263,16 @@ class MonitorScheduler:
                     self._tasks.pop(check.monitor_id, None)
             self._wake.set()
 
-    def _save_result(self, check: MonitorCheck, outcome: CheckOutcome) -> None:
+    def _save_result(
+        self, check: MonitorCheck, outcome: CheckOutcome
+    ) -> TopologyEvent | None:
         with self.database.session() as session:
             monitor = session.get(Monitor, check.monitor_id)
             if monitor is None or not monitor.enabled or _check_from_model(monitor) != check:
-                return
+                return None
+            node = session.get(Node, monitor.node_id)
+            if node is None:
+                return None
             result = session.get(MonitorResult, check.monitor_id)
             if result is None:
                 result = MonitorResult(monitor_id=check.monitor_id, success=outcome.success)
@@ -264,4 +283,6 @@ class MonitorScheduler:
             result.http_status = outcome.http_status
             result.error_code = outcome.error_code
             result.error_message = outcome.error_message[:500] if outcome.error_message else None
+            event = append_event(session, node.map_id, "status.updated")
             session.commit()
+            return event

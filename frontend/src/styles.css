@@ -43,6 +43,8 @@ h2 { font-size: 17px; letter-spacing: -0.01em; }
 .topbar-actions { gap: 14px; }
 .connection-state { gap: 7px; color: #91a0a3; font-size: 12px; }
 .connection-dot { width: 7px; height: 7px; border-radius: 50%; background: #55c7aa; box-shadow: 0 0 0 3px rgba(85, 199, 170, 0.12); }
+.connection-state.is-disconnected { color: #e6bd65; }
+.connection-state.is-disconnected .connection-dot { background: #e6bd65; box-shadow: 0 0 0 3px rgba(230, 189, 101, 0.12); }
 .button, .icon-button, .danger-button { border: 1px solid transparent; border-radius: 7px; transition: background 120ms ease, border-color 120ms ease; }
 .button { padding: 8px 12px; font-size: 12px; font-weight: 700; }
 .button.muted { color: #c0ccce; border-color: #344044; background: #20282a; }

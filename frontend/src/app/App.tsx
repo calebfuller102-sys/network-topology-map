@@ -19,6 +19,7 @@ import { TopologyNode, type TopologyFlowNode } from "../components/TopologyNode"
 import type { LinkPayload, NodePayload, NodeRecord, Snapshot, Status } from "../types";
 import { applyNodePositionChanges, draftResetKey } from "./editorState";
 import { NodePositionPersistence } from "./nodePositionPersistence";
+import { LiveSnapshotSync } from "./liveSnapshotSync";
 import { ViewportPersistence } from "./viewportPersistence";
 
 type FlowNode = TopologyFlowNode;
@@ -83,6 +84,7 @@ function AppContent() {
   const [addingNode, setAddingNode] = useState(false);
   const [addingLink, setAddingLink] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [liveConnected, setLiveConnected] = useState(false);
   const [saving, setSaving] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocusedNodeId, setSearchFocusedNodeId] = useState<string | null>(null);
@@ -94,25 +96,60 @@ function AppContent() {
   const viewportPersistence = useRef<ViewportPersistence | null>(null);
   const viewportMapId = useRef<string | null>(null);
 
-  const loadSnapshot = useCallback(async () => {
-    setLoading(true);
+  const loadSnapshot = useCallback(async (preferredMapId?: string, showLoading = true): Promise<Snapshot | null> => {
+    if (showLoading) {
+      setLoading(true);
+    }
     setError(null);
     try {
       const maps = await api.listMaps();
       if (maps.length === 0) {
         throw new Error("No map is available. The API should create a Home map during startup.");
       }
-      setSnapshot(await api.getSnapshot(maps[0].id));
+      const selectedMap = maps.find((map) => map.id === preferredMapId) ?? maps[0];
+      const nextSnapshot = await api.getSnapshot(selectedMap.id);
+      setSnapshot(nextSnapshot);
+      return nextSnapshot;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to load the topology map.");
+      return null;
     } finally {
-      setLoading(false);
+      if (showLoading) {
+        setLoading(false);
+      }
     }
   }, []);
 
   useEffect(() => {
     void loadSnapshot();
   }, [loadSnapshot]);
+
+  useEffect(() => {
+    if (!snapshot) {
+      return undefined;
+    }
+    const mapId = snapshot.map.id;
+    const sync = new LiveSnapshotSync({
+      eventUrl: api.eventsUrl,
+      loadSnapshot: async () => {
+        const nextSnapshot = await loadSnapshot(mapId, false);
+        if (!nextSnapshot) {
+          throw new Error("Unable to refresh the topology map.");
+        }
+        return nextSnapshot;
+      },
+      onSnapshot: (nextSnapshot) => {
+        setSnapshot(nextSnapshot);
+        setError(null);
+      },
+      onConnectionChange: setLiveConnected,
+      onError: (cause) => {
+        setError(cause instanceof Error ? cause.message : "Live update recovery failed.");
+      },
+    });
+    sync.start(snapshot);
+    return () => sync.dispose();
+  }, [loadSnapshot, snapshot?.map.id]);
 
   useEffect(() => () => {
     viewportPersistence.current?.dispose();
@@ -360,7 +397,10 @@ function AppContent() {
           </div>
         </div>
         <div className="topbar-actions">
-          <span className="connection-state"><span className="connection-dot" /> API connected</span>
+          <span className={`connection-state${liveConnected ? "" : " is-disconnected"}`}>
+            <span className="connection-dot" />
+            {liveConnected ? "Live updates connected" : "Live updates disconnected — retrying"}
+          </span>
           <button className="button muted" type="button" onClick={() => void loadSnapshot()}>
             Reload
           </button>
