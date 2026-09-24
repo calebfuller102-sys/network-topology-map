@@ -18,6 +18,7 @@ import { NodeInspector } from "../components/NodeInspector";
 import { TopologyNode, type TopologyFlowNode } from "../components/TopologyNode";
 import type { LinkPayload, NodePayload, NodeRecord, Snapshot, Status } from "../types";
 import { applyNodePositionChanges, draftResetKey } from "./editorState";
+import { NodePositionPersistence } from "./nodePositionPersistence";
 import { ViewportPersistence } from "./viewportPersistence";
 
 type FlowNode = TopologyFlowNode;
@@ -89,6 +90,7 @@ function AppContent() {
   const [notice, setNotice] = useState<string | null>(null);
   const [nodeDraftRevision, setNodeDraftRevision] = useState(0);
   const [linkDraftRevision, setLinkDraftRevision] = useState(0);
+  const nodePositionPersistence = useRef<NodePositionPersistence | null>(null);
   const viewportPersistence = useRef<ViewportPersistence | null>(null);
   const viewportMapId = useRef<string | null>(null);
 
@@ -116,6 +118,20 @@ function AppContent() {
     viewportPersistence.current?.dispose();
     viewportPersistence.current = null;
     viewportMapId.current = null;
+  }, []);
+
+  useEffect(() => {
+    const saveViewportOnPageExit = () => {
+      const currentMapId = viewportMapId.current;
+      if (!currentMapId) {
+        return;
+      }
+      viewportPersistence.current?.flushForPageExit((viewport) =>
+        api.patchViewport(currentMapId, viewport.x, viewport.y, viewport.zoom, true),
+      );
+    };
+    window.addEventListener("pagehide", saveViewportOnPageExit);
+    return () => window.removeEventListener("pagehide", saveViewportOnPageExit);
   }, []);
 
   const normalizedSearchQuery = useMemo(() => normalizeSearchQuery(searchQuery), [searchQuery]);
@@ -168,15 +184,19 @@ function AppContent() {
     });
   }, []);
 
-  const persistPosition: OnNodeDrag<FlowNode> = useCallback(async (_event, node) => {
+  const persistPosition: OnNodeDrag<FlowNode> = useCallback((_event, node) => {
     setError(null);
-    try {
-      await api.patchNodePosition(node.id, node.position.x, node.position.y);
-      setNotice("Position saved");
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to save node position.");
-      await loadSnapshot();
+    if (!nodePositionPersistence.current) {
+      nodePositionPersistence.current = new NodePositionPersistence(
+        (nodeId, position) => api.patchNodePosition(nodeId, position.x, position.y),
+        (cause) => {
+          setError(cause instanceof Error ? cause.message : "Unable to save node position.");
+          void loadSnapshot();
+        },
+        () => setNotice("Position saved"),
+      );
     }
+    nodePositionPersistence.current.schedule(node.id, node.position);
   }, [loadSnapshot]);
 
   const queueViewportPersistence = useCallback((mapId: string, viewport: Viewport) => {

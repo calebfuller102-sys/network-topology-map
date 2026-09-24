@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { NodeKind, NodePayload, NodeRecord } from "../types";
-import { ICON_MANIFEST } from "../icons";
+import { isAllowlistedIconId, matchingIcons } from "../icons";
 import { mergeExternalPosition } from "../app/editorState";
 
 const nodeKinds: NodeKind[] = ["device", "vm", "container", "kubernetes", "service", "cloud", "other"];
@@ -39,6 +39,8 @@ function initialDraft(node: NodeRecord | null, defaultPosition: { x: number; y: 
 
 export function NodeInspector({ node, defaultPosition, resetKey, saving, onCancel, onSave, onDelete }: NodeInspectorProps) {
   const [draft, setDraft] = useState<NodePayload>(() => initialDraft(node, defaultPosition));
+  const iconMatches = matchingIcons(draft.icon_id).slice(0, 6);
+  const validIconId = isAllowlistedIconId(draft.icon_id);
 
   useEffect(() => {
     setDraft(initialDraft(node, defaultPosition));
@@ -97,18 +99,46 @@ export function NodeInspector({ node, defaultPosition, resetKey, saving, onCance
             ))}
           </select>
         </label>
-        <label>
-          Icon
-          <select value={draft.icon_id} onChange={(event) => update("icon_id", event.target.value)} required>
-            {!ICON_MANIFEST.some((icon) => icon.id === draft.icon_id) ? (
-              <option value={draft.icon_id}>Unsupported saved icon — choose a replacement</option>
-            ) : null}
-            {ICON_MANIFEST.map((icon) => (
-              <option key={icon.id} value={icon.id}>{icon.glyph} {icon.label}</option>
+        <div className="icon-picker">
+          <label htmlFor="node-icon-id">Icon</label>
+          <input
+            id="node-icon-id"
+            type="search"
+            value={draft.icon_id}
+            onChange={(event) => update("icon_id", event.target.value.trim().toLocaleLowerCase())}
+            placeholder="mdi-server or si-docker"
+            spellCheck={false}
+            autoCapitalize="none"
+            aria-invalid={!validIconId}
+            aria-describedby="icon-picker-help"
+            required
+          />
+          <span className="field-help" id="icon-picker-help">
+            Search by name or type a bundled mdi- or si- identifier.
+          </span>
+          {!validIconId ? (
+            <p className="field-error" role="alert">
+              This icon ID is not in the local manifest. Choose one of the matching bundled icons.
+            </p>
+          ) : null}
+          <div className="icon-picker-results" role="listbox" aria-label="Matching local icons">
+            {iconMatches.map((icon) => (
+              <button
+                key={icon.id}
+                type="button"
+                className={`icon-picker-option${icon.id === draft.icon_id ? " is-selected" : ""}`}
+                role="option"
+                aria-selected={icon.id === draft.icon_id}
+                onClick={() => update("icon_id", icon.id)}
+              >
+                <span aria-hidden="true">{icon.glyph}</span>
+                <span>{icon.label}</span>
+                <code>{icon.id}</code>
+              </button>
             ))}
-          </select>
-          <span className="field-help">Icons are resolved from the local allowlisted manifest.</span>
-        </label>
+            {iconMatches.length === 0 ? <span className="field-help">No bundled icons match this search.</span> : null}
+          </div>
+        </div>
         <div className="field-row">
           <label>
             IPv4 address
@@ -137,7 +167,7 @@ export function NodeInspector({ node, defaultPosition, resetKey, saving, onCance
           <button type="button" className="button muted" onClick={onCancel} disabled={saving}>
             Cancel
           </button>
-          <button type="submit" className="button primary" disabled={saving || !draft.name.trim()}>
+          <button type="submit" className="button primary" disabled={saving || !draft.name.trim() || !validIconId}>
             {saving ? "Saving…" : "Save node"}
           </button>
         </div>

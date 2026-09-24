@@ -25,3 +25,17 @@ export const FALLBACK_ICON: IconOption = ICON_MANIFEST[0];
 export function iconForId(iconId: string): IconOption {
   return ICON_MANIFEST.find((icon) => icon.id === iconId) ?? FALLBACK_ICON;
 }
+
+export function isAllowlistedIconId(iconId: string): boolean {
+  return ICON_MANIFEST.some((icon) => icon.id === iconId);
+}
+
+export function matchingIcons(query: string): readonly IconOption[] {
+  const normalized = query.trim().toLocaleLowerCase();
+  if (!normalized) {
+    return ICON_MANIFEST;
+  }
+  return ICON_MANIFEST.filter((icon) => (
+    icon.id.includes(normalized) || icon.label.toLocaleLowerCase().includes(normalized)
+  ));
+}

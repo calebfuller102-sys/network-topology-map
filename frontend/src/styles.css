@@ -110,10 +110,16 @@ h2 { font-size: 17px; letter-spacing: -0.01em; }
 .node-form label { display: flex; flex-direction: column; gap: 6px; color: #c0ccce; font-size: 11px; font-weight: 700; }
 .node-form input, .node-form select { width: 100%; min-height: 35px; padding: 8px 9px; color: #e4eaeb; border: 1px solid #344044; border-radius: 6px; outline: none; background: #111617; font-size: 12px; }
 .node-form input:focus, .node-form select:focus { border-color: #79cde3; box-shadow: 0 0 0 2px rgba(121, 205, 227, 0.12); }
+.icon-picker { display: flex; flex-direction: column; gap: 6px; color: #c0ccce; font-size: 11px; font-weight: 700; }
 .field-help { color: #77888b; font-size: 10px; font-weight: 400; line-height: 1.4; }
 .field-error { margin: -5px 0 0; color: #ffb1b1; font-size: 11px; line-height: 1.4; }
 .field-row { align-items: flex-start; gap: 10px; }
 .field-row label { flex: 1; min-width: 0; }
+.icon-picker-results { display: grid; gap: 4px; max-height: 142px; margin-top: 7px; overflow-y: auto; }
+.icon-picker-option { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 7px; width: 100%; padding: 6px 7px; color: #c0ccce; border: 1px solid #263336; border-radius: 6px; background: #171d1f; font-size: 11px; text-align: left; }
+.icon-picker-option:hover, .icon-picker-option.is-selected { border-color: #52666a; background: #20282a; }
+.icon-picker-option.is-selected { color: #e4eaeb; }
+.icon-picker-option code { color: #77888b; font-family: "JetBrains Mono Local", ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; }
 .position-readout { display: flex; justify-content: space-between; padding: 9px 10px; color: #77888b; border: 1px solid #263336; border-radius: 6px; font-family: "JetBrains Mono Local", ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; }
 .position-readout span { color: #c0ccce; }
 .inspector-actions { justify-content: flex-end; gap: 8px; padding-top: 5px; }

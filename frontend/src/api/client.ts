@@ -86,9 +86,16 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify({ x, y }),
     }),
-  patchViewport: (mapId: string, viewport_x: number, viewport_y: number, viewport_zoom: number) =>
+  patchViewport: (
+    mapId: string,
+    viewport_x: number,
+    viewport_y: number,
+    viewport_zoom: number,
+    keepalive = false,
+  ) =>
     request<MapRecord>(`/maps/${mapId}`, {
       method: "PATCH",
       body: JSON.stringify({ viewport_x, viewport_y, viewport_zoom }),
+      keepalive,
     }),
 };
