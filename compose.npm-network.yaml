@@ -1,0 +1,12 @@
+services:
+  web:
+    networks:
+      app: {}
+      npm:
+        aliases:
+          - network-topology-web
+
+networks:
+  npm:
+    name: ${NPM_DOCKER_NETWORK:?Set NPM_DOCKER_NETWORK to an existing NPM network}
+    external: true

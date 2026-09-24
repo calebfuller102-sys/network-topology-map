@@ -10,9 +10,9 @@ not present yet; it must have a phase owner and an exit gate here.
 | Monitor runners and scheduler | Phase 4 | Implemented; local checks pass, successful HTTPS handshake and target-host ICMP unverified | ICMP/TCP/HTTP outcomes, bounded concurrency, cancellation, rescheduling, manual runs, and stale-result tests pass |
 | Monitor editor and per-check diagnostics UI | Phase 7 | Deferred; backend API available | Owner can configure checks, trigger a manual run, and understand each check's latest result in the inspector |
 | SSE event bus and recovery | Phase 5 | Implemented; bounded persisted handoff journal, SSE replay/resync, browser recovery refresh, and gateway configuration added | Revision-safe initial sync, reconnect snapshot recovery, and proxy keepalive test pass |
-| Docker images and NGINX gateway | Phase 6 | Deferred; current internal-only Compose network has unverified monitor-target egress | Images build from pinned inputs, target reachability is verified, and `/api` remains private behind the gateway |
-| NPM/LXC/ICMP acceptance | Phase 6–7 | Requires owner environment | Actual target LXC routing, permissions, NPM auth, and restart checks pass |
-| Offline transfer and backup/restore | Phase 6–7 | Deferred | WAN-disconnected operation and restore smoke test pass |
+| Docker images and NGINX gateway | Phase 6 | Dockerfiles, immutable base digests, API-only monitor egress, non-root/read-only services, NPM overlay, and unbuffered SSE gateway are implemented; Docker build is not run on this workstation | Container images build from pinned inputs, target routes are verified, and `/api` remains private behind the gateway |
+| NPM/LXC/ICMP acceptance | Phase 6 | Requires owner environment; target OS, architecture, Docker nesting, NPM placement, auth, routes, and ICMP capability are unknown | Actual target LXC routing, permissions, NPM auth, and cold restart checks pass |
+| Offline transfer and backup/restore | Phase 6 | Export/import and online SQLite backup/restore scripts are implemented; backup helper tests are local, but Docker transfer and target restore smoke tests are unverified | WAN-disconnected operation and restore smoke test pass |
 
 ## Phase gates
 

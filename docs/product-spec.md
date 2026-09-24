@@ -61,7 +61,7 @@ The address `10.0.0.270:25565` in the sample is invalid IPv4. Input validation m
 
 **Backend:** FastAPI + Pydantic + SQLAlchemy + Alembic + SQLite. A single Uvicorn worker handles REST, SSE, and an asyncio monitoring scheduler started/stopped via application lifespan. Bounded concurrency and per-check timeouts protect it from slow targets. SQLite is stored on a local persistent volume with foreign keys enabled and WAL mode; document that the DB must not live on an unreliable network filesystem. Keep write transactions short; do not hold a DB transaction during network checks. The scheduler enqueues new work on monitor edits and avoids overlapping checks of the same monitor.
 
-**Gateway:** A small NGINX image serves the built SPA and proxies `/api/` to the API container on a private Compose network. NPM fronts only this gateway; no public API port. Disable response buffering and set appropriate read timeout for the `/api/v1/events` SSE route. The owner can route NPM to the loopback gateway port if NPM shares the host, or attach NPM to an explicitly named Docker network if it runs in a container. Document both alternatives without assuming a particular NPM setup.
+**Gateway:** A small NGINX image serves the built SPA and proxies `/api/` to the API container on a private Compose network. The API also joins a separate egress network for configured monitor targets; it has no published host port. NPM fronts only the gateway. Disable response buffering and set an appropriate read timeout for the map SSE route. The owner can route NPM to the loopback gateway port if NPM shares the host, or attach only the gateway to an explicitly named Docker network if NPM runs in a container. Document both alternatives without assuming a particular NPM setup.
 
 **Icon resolution:** Support `mdi-<slug>` and `si-<slug>` strings. At **build time**, generate a normalized, allowlisted icon manifest and local assets from pinned `@mdi/js` and `simple-icons` packages; at runtime look up IDs only in that manifest. Ship a neutral network fallback. Do not call icon sites, interpolate an icon string into a URL, or render arbitrary user SVG. Check package licenses/brand guidelines in the release README. Include a searchable picker plus direct identifier entry; avoid bundling an enormous icon module into the initial JS chunk if a static asset manifest works better.
 
@@ -243,30 +243,41 @@ network-topology/
 
 ## 9. Docker and operations
 
-Two runtime services: `web` serves static assets and proxies API; `api` owns the SQLite DB and scheduler. Use a named local volume at `/data`. `api` is reachable only over the internal Compose network. Map `web` to `127.0.0.1:${APP_PORT:-8080}:80` by default. Supply a separate documented deployment option for NPM in a different container network. Set `restart: unless-stopped`, healthchecks, read-only root filesystems where feasible, non-root users where compatible, and a writable data volume. Never mount `/var/run/docker.sock`.
+Two runtime services: `web` serves static assets and proxies API; `api` owns the SQLite DB and scheduler. Use a named local volume at `/data`. The services share an `internal: true` app network; the API additionally joins a non-internal monitor-egress bridge so configured checks can reach routed targets. Only `web` publishes a port, bound to `127.0.0.1:${APP_PORT:-8080}:8080`. Supply a separate documented option for NPM in a different container network. Set `restart: unless-stopped`, healthchecks, read-only root filesystems, non-root users, dropped capabilities by default, and a writable data volume. Never mount `/var/run/docker.sock`.
 
 For ICMP, use a bounded, fixed implementation and only add `NET_RAW` to `api` if the selected ICMP method and target LXC environment require it. Never use `privileged: true` just to get ping working. Test inside the actual LXC; nested Docker and ICMP permissions depend on host/LXC settings. Check Docker Compose availability, NPM reachability, routing from inside the container, and local volume permissions before final deployment. If Docker cannot run in that LXC, deploy the same Compose stack on a supported Linux VM/host rather than weakening isolation blindly.
 
-An illustrative Compose layout (the implementation may add healthcheck commands and env settings):
+The checked-in `compose.yaml` is the deployable configuration; this compact layout records its network and port boundary:
 
 ```yaml
 services:
   web:
+    image: network-topology-web:0.1.0
+    pull_policy: never
     build: ./frontend
     ports:
-      - "127.0.0.1:${APP_PORT:-8080}:80"
+      - "127.0.0.1:${APP_PORT:-8080}:8080"
+    read_only: true
+    user: "101:101"
+    cap_drop: [ALL]
+    networks: [app]
     depends_on:
       api:
         condition: service_healthy
     restart: unless-stopped
   api:
+    image: network-topology-api:0.1.0
+    pull_policy: never
     build: ./backend
     environment:
       DATABASE_URL: sqlite:////data/topology.db
+      DATABASE_PATH: /data/topology.db
     volumes:
       - topology-data:/data
-    cap_add:
-      - NET_RAW # only if confirmed necessary for ICMP on target host
+    read_only: true
+    user: "10001:10001"
+    cap_drop: [ALL]
+    networks: [app, monitor-egress]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/healthz', timeout=2)"]
@@ -275,9 +286,13 @@ services:
       retries: 3
 volumes:
   topology-data:
+networks:
+  app:
+    internal: true
+  monitor-egress: {}
 ```
 
-Create images on a connected build machine, then use `docker save`/`docker load` or an internal registry to move them to the disconnected host. Avoid `docker compose up --build` on an isolated host unless all build dependencies and base images are already present. After deployment, block WAN and test UI and LAN monitoring. Backup through SQLite's online backup API or `VACUUM INTO` while the app runs, or stop the stack and copy the DB plus WAL/SHM files consistently; do not blindly copy only the main DB during WAL writes. Document restore and test it once.
+The NPM overlay attaches only `web` to an existing external NPM network. The optional ICMP overlay adds only `NET_RAW`, and must be used only if target-LXC testing shows it is required. Base images are digest-pinned; build on a connected machine for the verified target platform, then use the supplied `docker save`/`docker load` scripts. Do not build on an isolated host. The backup script uses SQLite's online backup API; restore requires the stack stopped, validates integrity, and atomically replaces the DB. Block WAN and test UI plus LAN monitoring on the target before claiming offline acceptance.
 
 ## 10. Milestones, gates, and Codex build sequence
 

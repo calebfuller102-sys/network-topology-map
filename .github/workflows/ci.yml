@@ -54,3 +54,46 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: pnpm build
+
+  container-images:
+    name: Container image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate default Compose model
+        run: docker compose config --quiet
+      - name: Validate optional deployment overlays
+        env:
+          NPM_DOCKER_NETWORK: ci-npm-network
+        run: |
+          docker compose -f compose.yaml -f compose.npm-network.yaml config --quiet
+          docker compose -f compose.yaml -f compose.icmp-capability.yaml config --quiet
+      - name: Check operator shell syntax
+        run: for script in scripts/*.sh; do bash -n "$script"; done
+      - name: Build pinned runtime images
+        run: docker compose build --pull
+      - name: Smoke test gateway after API recreation
+        run: |
+          docker compose up --detach
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8080/api/v1/healthz; then break; fi
+            sleep 1
+          done
+          curl --fail --show-error http://127.0.0.1:8080/api/v1/healthz
+          map_id=$(curl --fail --silent http://127.0.0.1:8080/api/v1/maps | python3 -c 'import json,sys; print(json.load(sys.stdin)[0]["id"])')
+          set +e
+          stream=$(curl --no-buffer --silent --max-time 18 "http://127.0.0.1:8080/api/v1/maps/${map_id}/events?after=0")
+          stream_status=$?
+          set -e
+          test "$stream_status" -eq 28
+          grep -q '^: connected' <<< "$stream"
+          grep -q '^: keepalive' <<< "$stream"
+          docker compose up --detach --force-recreate api
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8080/api/v1/healthz; then break; fi
+            sleep 1
+          done
+          curl --fail --show-error http://127.0.0.1:8080/api/v1/healthz
+      - name: Stop smoke-test stack
+        if: always()
+        run: docker compose down --volumes

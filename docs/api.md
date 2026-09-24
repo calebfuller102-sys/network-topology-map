@@ -34,7 +34,9 @@ because the URL uses the configured IPv4 address, TLS name verification is
 against that IP address. An optional Host header changes HTTP routing only and
 does not provide a separate TLS server name.
 
-The M3 API contract and M4 monitor-run contract are implemented and tested.
-Remaining event-stream contract work belongs to M5: define an SSE event
-envelope and snapshot-resynchronization rule that cannot miss an update between
-initial snapshot and subscription.
+The M3 API contract, M4 monitor-run contract, and M5 event contract are
+implemented and locally tested. The SSE journal supports revision replay and
+resync; the browser refreshes its snapshot on stream open/reconnect. The
+deployable NGINX configuration is in `frontend/nginx.conf` and disables
+buffering for the event route. Exercising it through the owner's NPM path is a
+host-specific M6 acceptance check.

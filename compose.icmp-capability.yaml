@@ -1,0 +1,5 @@
+# Apply only if ICMP fails in the target LXC without this narrowly scoped cap.
+services:
+  api:
+    cap_add:
+      - NET_RAW

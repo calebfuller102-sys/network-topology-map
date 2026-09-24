@@ -2,22 +2,43 @@ name: network-topology
 
 services:
   web:
+    image: network-topology-web:0.1.0
+    pull_policy: never
     build:
       context: ./frontend
     ports:
-      - "127.0.0.1:${APP_PORT:-8080}:80"
+      - "127.0.0.1:${APP_PORT:-8080}:8080"
+    read_only: true
+    user: "101:101"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m,mode=1777
     depends_on:
       api:
         condition: service_healthy
     restart: unless-stopped
     networks:
-      - app
+      app: {}
 
   api:
+    image: network-topology-api:0.1.0
+    pull_policy: never
     build:
       context: ./backend
+    read_only: true
+    user: "10001:10001"
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
     environment:
       DATABASE_URL: sqlite:////data/topology.db
+      DATABASE_PATH: /data/topology.db
       MONITOR_CONCURRENCY: ${MONITOR_CONCURRENCY:-8}
     volumes:
       - topology-data:/data
@@ -29,7 +50,8 @@ services:
       timeout: 5s
       retries: 3
     networks:
-      - app
+      app: {}
+      monitor-egress: {}
     # Add NET_RAW only after the selected ICMP implementation is tested in the
     # target LXC. Never use privileged: true as an ICMP workaround.
 
@@ -39,3 +61,6 @@ volumes:
 networks:
   app:
     internal: true
+  # Only the API joins this non-internal bridge so checks can reach routed
+  # targets. The API remains unpublished; host firewall/routing still applies.
+  monitor-egress: {}

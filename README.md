@@ -5,25 +5,21 @@ product specification is in [docs/product-spec.md](docs/product-spec.md).
 
 ## Current status
 
-This repository was initialized from an empty workspace. Phase 0 contains the
-product specification, project constraints, deployment skeleton, environment
-contract, and operator-facing checklists. Phase 1 contains the backend data/API
-contract, Phase 2 contains the API-backed topology vertical slice, and Phase 3
-contains link editing, the local icon manifest/picker, and accessibility
-foundations. The remaining work is tracked in [docs/roadmap.md](docs/roadmap.md).
+M0–M5 are implemented. M6 packaging groundwork is implemented: digest-pinned
+Dockerfiles, a private API gateway layout, optional NPM and ICMP overlays,
+checksummed offline image transfer, and SQLite backup/restore procedures. The
+remaining project state and phase gates are tracked in
+[docs/roadmap.md](docs/roadmap.md).
 
-Phase 4 adds bounded ICMP/TCP/HTTP(S) check runners, a single lifespan-owned
-scheduler, manual runs, result persistence, and derived status. Local tests and
-backend lint pass; deployment-sensitive monitoring remains unverified. The
-following facts are not available in this workspace and must be validated
-before the deployment gate:
+This checkout does not have Docker Engine/Compose available, so container image
+builds and target deployment checks have not been performed here. The owner's
+environment must still confirm:
 
 - target LXC operating system, CPU architecture, Docker mode, and permissions;
 - NGINX Proxy Manager placement, network attachment, and authentication mode;
-- routing from inside the API container to the intended IPv4 targets;
+- routing from inside the API container to intended IPv4 targets;
 - whether ICMP works without `NET_RAW`, or requires that capability;
-- the owner's reference screenshots and `message.txt` if they are not copied
-  into the repository.
+- cold restart, restore smoke test, and WAN-disconnected operation.
 
 ## Backend local commands
 
@@ -51,5 +47,7 @@ The intended runtime is two containers:
 - `web`: static SPA and NGINX reverse proxy;
 - `api`: FastAPI, SQLite, migrations, SSE, and the single monitor scheduler.
 
-The initial Compose shape is in [compose.yaml](compose.yaml). Detailed
-operator procedures will be completed before the deployment milestone.
+The deployable Compose shape is in [compose.yaml](compose.yaml). See
+[docs/deployment.md](docs/deployment.md) and
+[docs/backup-restore.md](docs/backup-restore.md) for build, NPM, offline
+transfer, and backup/restore procedures.

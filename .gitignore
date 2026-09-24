@@ -25,6 +25,8 @@ env/
 .env.*
 !.env.example
 compose.override.yaml
+/backups/
+/transfer/
 
 # OS/editor files
 .DS_Store
