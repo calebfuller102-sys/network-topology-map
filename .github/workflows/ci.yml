@@ -101,8 +101,9 @@ jobs:
           docker compose ps --all
           web_id="$(docker compose ps --all --quiet web)"
           if [ -n "$web_id" ]; then
-            docker inspect "$web_id" --format 'published ports: {{json .NetworkSettings.Ports}}'
+            docker inspect "$web_id" --format 'host port bindings: {{json .HostConfig.PortBindings}}; network ports: {{json .NetworkSettings.Ports}}; exposed ports: {{json .Config.ExposedPorts}}'
           fi
+          docker compose port web 8080 || true
           docker compose logs --no-color --timestamps
       - name: Stop smoke-test stack
         if: always()
