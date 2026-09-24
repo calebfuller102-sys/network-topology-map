@@ -27,11 +27,15 @@
   preservation tests.
 - Frontend asset verification, TypeScript check, and interaction tests pass.
   The production bundle succeeds using Vite's runner config loader.
-- Docker Engine/Compose and WSL are unavailable on this workstation. Thus
-  Compose parsing/builds, NGINX image startup, Bash operator scripts, target
-  routes, NPM, ICMP permissions, cold restart, container restore, and WAN-off
-  acceptance have not been exercised here. The GitHub workflow change has not
-  been pushed, so its CI job has not run.
+- Docker Engine/Compose and WSL are unavailable on this workstation. GitHub
+  Actions run [#10](https://github.com/calebfuller102-sys/network-topology-map/actions/runs/36059904030)
+  passed backend checks, frontend checks, Compose model/overlay validation,
+  shell syntax validation, both image builds, and a container smoke test. The
+  smoke test verified gateway health, map API access, SSE connection and
+  keepalive, then recreated the API and verified health again. This is hosted
+  CI evidence, not target-host acceptance. Target LXC routes, NPM, ICMP
+  permissions, full-stack cold restart, container restore, and WAN-off
+  acceptance remain unverified.
 - The normal Vite config-bundling path is blocked by this Windows sandbox's
   access error traversing `../../../../..`; the production build with
   `--configLoader runner` succeeds. This is recorded rather than hidden.
