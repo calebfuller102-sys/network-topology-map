@@ -9,6 +9,8 @@ services:
       dockerfile: frontend/Dockerfile
     ports:
       - "127.0.0.1:${APP_PORT:-8080}:8080"
+    expose:
+      - "8080"
     read_only: true
     user: "101:101"
     cap_drop:
