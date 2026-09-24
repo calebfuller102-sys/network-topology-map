@@ -243,7 +243,7 @@ network-topology/
 
 ## 9. Docker and operations
 
-Two runtime services: `web` serves static assets and proxies API; `api` owns the SQLite DB and scheduler. Use a named local volume at `/data`. The services share an `internal: true` app network; the API additionally joins a non-internal monitor-egress bridge so configured checks can reach routed targets. Only `web` publishes a port, bound to `127.0.0.1:${APP_PORT:-8080}:8080`. Supply a separate documented option for NPM in a different container network. Set `restart: unless-stopped`, healthchecks, read-only root filesystems, non-root users, dropped capabilities by default, and a writable data volume. Never mount `/var/run/docker.sock`.
+Two runtime services: `web` serves static assets and proxies API; `api` owns the SQLite DB and scheduler. Use a named local volume at `/data`. The services share an `internal: true` app network. The web gateway also joins a bridge with IP masquerading disabled for its loopback-published port; the API additionally joins a non-internal monitor-egress bridge so configured checks can reach routed targets. Only `web` publishes a port, bound to `127.0.0.1:${APP_PORT:-8080}:8080`. Supply a separate documented option for NPM in a different container network. Set `restart: unless-stopped`, healthchecks, read-only root filesystems, non-root users, dropped capabilities by default, and a writable data volume. Never mount `/var/run/docker.sock`.
 
 For ICMP, use a bounded, fixed implementation and only add `NET_RAW` to `api` if the selected ICMP method and target LXC environment require it. Never use `privileged: true` just to get ping working. Test inside the actual LXC; nested Docker and ICMP permissions depend on host/LXC settings. Check Docker Compose availability, NPM reachability, routing from inside the container, and local volume permissions before final deployment. If Docker cannot run in that LXC, deploy the same Compose stack on a supported Linux VM/host rather than weakening isolation blindly.
 
@@ -260,7 +260,7 @@ services:
     read_only: true
     user: "101:101"
     cap_drop: [ALL]
-    networks: [app]
+    networks: [app, gateway]
     depends_on:
       api:
         condition: service_healthy
@@ -289,6 +289,10 @@ volumes:
 networks:
   app:
     internal: true
+  gateway:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
   monitor-egress: {}
 ```
 

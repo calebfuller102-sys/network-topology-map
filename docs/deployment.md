@@ -9,12 +9,14 @@ end on the target host.
 
 - `web` is a non-root static NGINX gateway, listens on container port `8080`,
   serves the SPA, and proxies `/api/` to `api:8000`. The host publishes only
-  `127.0.0.1:${APP_PORT:-8080}:8080`.
+  `127.0.0.1:${APP_PORT:-8080}:8080`. It shares the internal `app` network and
+  also joins a dedicated `gateway` bridge with IP masquerading disabled so the
+  host can publish the loopback port without granting normal outbound NAT.
 - `api` has no published host port. It and `web` share the `app` network, which
   is marked `internal: true`. The API alone also joins `monitor-egress`, a
   normal bridge network required for configured checks to reach routed IPv4
-  targets. This is API-only network membership, not a destination allowlist;
-  actual LAN/WAN routes and firewall policy depend on the host.
+  targets. This is API-only monitor-egress membership, not a destination
+  allowlist; actual LAN/WAN routes and firewall policy depend on the host.
 - Both containers use read-only root filesystems, non-root UIDs, dropped Linux
   capabilities, and writable `/tmp` tmpfs mounts. The API data volume is the
   only persistent write mount. There is no privileged container or Docker

@@ -25,6 +25,7 @@ services:
     restart: unless-stopped
     networks:
       app: {}
+      gateway: {}
 
   api:
     image: network-topology-api:0.1.0
@@ -64,6 +65,12 @@ volumes:
 networks:
   app:
     internal: true
+  # Publish the gateway through the host without granting the web process
+  # outbound source-NAT access. Keep API reachability on the internal app net.
+  gateway:
+    driver: bridge
+    driver_opts:
+      com.docker.network.bridge.enable_ip_masquerade: "false"
   # Only the API joins this non-internal bridge so checks can reach routed
   # targets. The API remains unpublished; host firewall/routing still applies.
   monitor-egress: {}

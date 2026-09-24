@@ -5,8 +5,10 @@
 - Added digest-pinned Python, Node, and NGINX images. The runtime services use
   non-root UIDs, read-only root filesystems, dropped capabilities, bounded
   writable `/tmp` mounts, and the persistent SQLite volume.
-- Kept `web` and `api` on an internal app network; attached only the API to a
-  separate monitor-egress bridge. The API has no published host port.
+- Kept `web` and `api` on an internal app network; attached the web gateway to
+  a dedicated bridge with IP masquerading disabled for its loopback-published
+  port, and attached only the API to the separate monitor-egress bridge. The
+  API has no published host port.
 - Installed the SSE-aware NGINX config in the web image, with buffering off and
   a long stream timeout and dynamic Docker DNS for API container replacement.
   Added a separate external-NPM network overlay and an optional `NET_RAW`
