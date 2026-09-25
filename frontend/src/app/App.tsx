@@ -519,7 +519,10 @@ function AppContent() {
           {notice}
         </button>
       ) : null}
-      <section className="workspace" aria-label="Topology workspace">
+      <section
+        className={`workspace${snapshot?.nodes.length === 0 ? " workspace-empty" : ""}`}
+        aria-label="Topology workspace"
+      >
         <div className="canvas-panel">
           <div className="canvas-toolbar">
             <span>{snapshot?.nodes.length ?? 0} nodes · {snapshot?.links.length ?? 0} links</span>
@@ -625,7 +628,14 @@ function AppContent() {
                   <span className="empty-glyph">+</span>
                   <h2>Start your map</h2>
                   <p>Add the first node, then drag it into position.</p>
-                  <button className="button primary" type="button" onClick={beginAddingNode}>
+                  <button
+                    className="button primary nopan"
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      beginAddingNode();
+                    }}
+                  >
                     Add first node
                   </button>
                 </div>
