@@ -9,7 +9,8 @@ import type {
   NodePayload,
   NodeRecord,
 } from "../types";
-import { isAllowlistedIconId, matchingIcons } from "../icons";
+import { isSupportedIconId, matchingIcons } from "../icons";
+import { isRemoteMdiIconId } from "../app/iconId";
 import { mergeExternalPosition } from "../app/editorState";
 
 const nodeKinds: NodeKind[] = ["device", "vm", "container", "kubernetes", "service", "cloud", "other"];
@@ -90,7 +91,8 @@ export function NodeInspector({
 }: NodeInspectorProps) {
   const [draft, setDraft] = useState<NodePayload>(() => initialDraft(node, defaultPosition));
   const iconMatches = matchingIcons(draft.icon_id).slice(0, 6);
-  const validIconId = isAllowlistedIconId(draft.icon_id);
+  const validIconId = isSupportedIconId(draft.icon_id);
+  const remoteMdiIcon = isRemoteMdiIconId(draft.icon_id);
   const validHyperlink = isValidHyperlink(draft.hyperlink);
 
   useEffect(() => {
@@ -166,11 +168,16 @@ export function NodeInspector({
             required
           />
           <span className="field-help" id="icon-picker-help">
-            Search by name or type a bundled mdi- or si- identifier.
+            Search bundled icons, or type any mdi- identifier to load it from Iconify.
           </span>
           {!validIconId ? (
             <p className="field-error" role="alert">
-              This icon ID is not in the local manifest. Choose one of the matching bundled icons.
+              Enter a valid mdi- icon ID or choose one of the matching bundled icons.
+            </p>
+          ) : null}
+          {remoteMdiIcon ? (
+            <p className="field-help" role="status">
+              This Material Design icon will load from Iconify. The local fallback appears if it is unavailable.
             </p>
           ) : null}
           <div className="icon-picker-results" role="listbox" aria-label="Matching local icons">

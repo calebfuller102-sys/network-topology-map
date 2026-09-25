@@ -54,7 +54,7 @@ h3 { margin: 2px 0 0; font-size: 14px; letter-spacing: -0.01em; }
 .button.primary:hover { background: #9adceb; }
 .icon-button { width: 28px; height: 28px; color: #91a0a3; background: transparent; font-size: 21px; line-height: 1; }
 .icon-button:hover { color: #e4eaeb; background: #263033; }
-.message { position: absolute; z-index: 20; top: 76px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 15px; max-width: calc(100% - 32px); padding: 9px 12px; border-radius: 7px; font-size: 12px; box-shadow: 0 9px 30px rgba(0, 0, 0, 0.3); }
+.message { position: absolute; z-index: 20; top: 118px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 15px; max-width: calc(100% - 32px); padding: 9px 12px; border-radius: 7px; font-size: 12px; box-shadow: 0 9px 30px rgba(0, 0, 0, 0.3); }
 .message button { border: 0; color: inherit; background: transparent; font-weight: 700; text-decoration: underline; }
 .message.error { color: #ffd5d5; border: 1px solid rgba(243, 111, 111, 0.5); background: #3b2426; }
 .message.notice { color: #c9f2e7; border: 1px solid rgba(85, 199, 170, 0.45); background: #1c3430; }

@@ -141,3 +141,63 @@ test("a node icon opens its saved local hyperlink", async ({ page, context }) =>
   await page.getByRole("link", { name: "Open Audit Router hyperlink" }).click();
   await expect((await popup).url()).toBe("http://127.0.0.1:4173/linked-page");
 });
+
+test("a saved position notice appears below the toolbar and clears after three seconds", async ({ page }) => {
+  await page.route("**/api/v1/maps", async (route) => {
+    await route.fulfill({ json: [map] });
+  });
+  await page.route("**/api/v1/maps/map-a/snapshot", async (route) => {
+    await route.fulfill({ json: snapshot });
+  });
+  await page.route("**/api/v1/maps/map-a/events?after=*", async (route) => {
+    await route.fulfill({ contentType: "text/event-stream", body: ": connected\n\n" });
+  });
+  await page.route("**/api/v1/nodes/node-a/position", async (route) => {
+    await route.fulfill({ json: { ...snapshot.nodes[0], x: 140, y: 120 } });
+  });
+
+  await page.goto(baseUrl);
+  const node = page.locator(".topology-node").first();
+  const box = await node.boundingBox();
+  if (!box) {
+    throw new Error("Topology node did not render for drag test.");
+  }
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 60, box.y + box.height / 2 + 40, { steps: 5 });
+  await page.mouse.up();
+
+  const notice = page.locator(".message.notice");
+  await expect(notice).toHaveText("Position saved");
+  await expect(notice).toHaveCSS("top", "118px");
+  await expect(notice).toHaveCount(0, { timeout: 4_000 });
+});
+
+test("a non-bundled mdi icon uses the approved remote image and shows its editor guidance", async ({ page }) => {
+  const remoteSnapshot = {
+    ...snapshot,
+    nodes: snapshot.nodes.map((node, index) => (index === 0 ? { ...node, icon_id: "mdi-vpn" } : node)),
+  };
+  let iconRequested = false;
+  await page.route("**/api/v1/maps", async (route) => {
+    await route.fulfill({ json: [map] });
+  });
+  await page.route("**/api/v1/maps/map-a/snapshot", async (route) => {
+    await route.fulfill({ json: remoteSnapshot });
+  });
+  await page.route("**/api/v1/maps/map-a/events?after=*", async (route) => {
+    await route.fulfill({ contentType: "text/event-stream", body: ": connected\n\n" });
+  });
+  await page.route("https://api.iconify.design/mdi/vpn.svg?color=%2379cde3", async (route) => {
+    iconRequested = true;
+    await route.fulfill({ contentType: "image/svg+xml", body: "<svg xmlns=\"http://www.w3.org/2000/svg\"/>" });
+  });
+
+  await page.goto(baseUrl);
+  const image = page.locator(".topology-node").first().locator("img");
+  await expect(image).toHaveAttribute("src", "https://api.iconify.design/mdi/vpn.svg?color=%2379cde3");
+  await expect.poll(() => iconRequested).toBe(true);
+
+  await page.getByText("Audit Router", { exact: true }).click();
+  await expect(page.getByText("This Material Design icon will load from Iconify.")).toBeVisible();
+});

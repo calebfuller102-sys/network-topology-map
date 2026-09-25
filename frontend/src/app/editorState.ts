@@ -1,4 +1,4 @@
-import type { NodePositionChange } from "@xyflow/react";
+import type { NodeChange, NodePositionChange } from "@xyflow/react";
 
 interface Position {
   x: number;
@@ -7,6 +7,20 @@ interface Position {
 
 interface PositionedRecord extends Position {
   id: string;
+}
+
+/**
+ * A controlled React Flow canvas emits a position change on every drag frame.
+ * Persisted application state only needs the final coordinate; retaining the
+ * intermediate values forces a complete node-list render while React Flow is
+ * already painting the drag locally.
+ */
+export function completedNodePositionChanges(
+  changes: readonly NodeChange[],
+): NodePositionChange[] {
+  return changes.filter(
+    (change): change is NodePositionChange => change.type === "position" && change.dragging === false,
+  );
 }
 
 /**

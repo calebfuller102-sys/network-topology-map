@@ -1,4 +1,5 @@
 import { GENERATED_ICON_MANIFEST } from "./generated/icon-manifest";
+import { isRemoteMdiIconId, remoteMdiAssetUrl } from "./app/iconId";
 
 export interface IconOption {
   id: string;
@@ -22,12 +23,33 @@ export const ICON_MANIFEST: readonly IconOption[] = GENERATED_ICON_MANIFEST.map(
 
 export const FALLBACK_ICON: IconOption = ICON_MANIFEST[0];
 
+function remoteMdiIcon(iconId: string): IconOption {
+  const assetUrl = remoteMdiAssetUrl(iconId);
+  if (!assetUrl) {
+    return FALLBACK_ICON;
+  }
+  const slug = iconId.slice("mdi-".length);
+  return {
+    id: iconId,
+    label: `Material Design Icon: ${slug}`,
+    glyph: "",
+    // The regular expression above only permits a normalized MDI slug, so a
+    // saved identifier cannot change this trusted host or its path structure.
+    assetUrl,
+  };
+}
+
 export function iconForId(iconId: string): IconOption {
-  return ICON_MANIFEST.find((icon) => icon.id === iconId) ?? FALLBACK_ICON;
+  return ICON_MANIFEST.find((icon) => icon.id === iconId)
+    ?? (isRemoteMdiIconId(iconId) ? remoteMdiIcon(iconId) : FALLBACK_ICON);
 }
 
 export function isAllowlistedIconId(iconId: string): boolean {
   return ICON_MANIFEST.some((icon) => icon.id === iconId);
+}
+
+export function isSupportedIconId(iconId: string): boolean {
+  return isAllowlistedIconId(iconId) || isRemoteMdiIconId(iconId);
 }
 
 export function matchingIcons(query: string): readonly IconOption[] {

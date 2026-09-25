@@ -26,7 +26,7 @@ import type {
   Snapshot,
   Status,
 } from "../types";
-import { applyNodePositionChanges, draftResetKey } from "./editorState";
+import { applyNodePositionChanges, completedNodePositionChanges, draftResetKey } from "./editorState";
 import { NodePositionPersistence } from "./nodePositionPersistence";
 import { LiveSnapshotSync, type SnapshotLoadResult } from "./liveSnapshotSync";
 import { SnapshotCoordinator } from "./snapshotCoordinator";
@@ -106,6 +106,26 @@ function AppContent() {
   const viewportPersistence = useRef<ViewportPersistence | null>(null);
   const viewportMapId = useRef<string | null>(null);
   const snapshotCoordinator = useRef(new SnapshotCoordinator());
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const dismissNotice = useCallback(() => {
+    if (noticeTimer.current !== null) {
+      clearTimeout(noticeTimer.current);
+      noticeTimer.current = null;
+    }
+    setNotice(null);
+  }, []);
+
+  const showNotice = useCallback((message: string) => {
+    if (noticeTimer.current !== null) {
+      clearTimeout(noticeTimer.current);
+    }
+    setNotice(message);
+    noticeTimer.current = setTimeout(() => {
+      noticeTimer.current = null;
+      setNotice(null);
+    }, 3_000);
+  }, []);
 
   const applySnapshot = useCallback((result: SnapshotLoadResult): boolean => {
     if (!snapshotCoordinator.current.shouldApply(result.snapshot, result.request)) {
@@ -181,6 +201,9 @@ function AppContent() {
     viewportPersistence.current?.dispose();
     viewportPersistence.current = null;
     viewportMapId.current = null;
+    if (noticeTimer.current !== null) {
+      clearTimeout(noticeTimer.current);
+    }
   }, []);
 
   useEffect(() => {
@@ -231,7 +254,11 @@ function AppContent() {
   }, [snapshot?.nodes.length]);
 
   const onNodesChange: OnNodesChange<FlowNode> = useCallback((changes) => {
-    const positionChanges = changes.filter((change) => change.type === "position");
+    // React Flow already owns the transient drag state. Writing every pointer
+    // frame through the API-backed snapshot rebuilds the complete node list and
+    // visibly fights its own drag renderer. Only commit the final coordinate
+    // from onNodeDragStop below.
+    const positionChanges = completedNodePositionChanges(changes);
     if (positionChanges.length === 0) {
       return;
     }
@@ -253,6 +280,16 @@ function AppContent() {
 
   const persistPosition: OnNodeDrag<FlowNode> = useCallback((_event, node) => {
     setError(null);
+    setSnapshot((current) => {
+      if (!current) return current;
+      const nodes = applyNodePositionChanges(current.nodes, [{
+        id: node.id,
+        type: "position",
+        position: node.position,
+        dragging: false,
+      }]);
+      return nodes === current.nodes ? current : { ...current, nodes };
+    });
     if (!nodePositionPersistence.current) {
       nodePositionPersistence.current = new NodePositionPersistence(
         (nodeId, position) => api.patchNodePosition(nodeId, position.x, position.y),
@@ -260,11 +297,11 @@ function AppContent() {
           setError(cause instanceof Error ? cause.message : "Unable to save node position.");
           void loadSnapshot();
         },
-        () => setNotice("Position saved"),
+        () => showNotice("Position saved"),
       );
     }
     nodePositionPersistence.current.schedule(node.id, node.position);
-  }, [loadSnapshot]);
+  }, [loadSnapshot, showNotice]);
 
   const queueViewportPersistence = useCallback((mapId: string, viewport: Viewport) => {
     if (viewportMapId.current !== mapId) {
@@ -327,13 +364,13 @@ function AppContent() {
       setAddingNode(false);
       setAddingLink(false);
       setNodeDraftRevision((revision) => revision + 1);
-      setNotice(editingExistingNode ? "Node saved" : "Node created");
+      showNotice(editingExistingNode ? "Node saved" : "Node created");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to save node.");
     } finally {
       setSaving(false);
     }
-  }, [loadSnapshot, selectedNode, snapshot]);
+  }, [loadSnapshot, selectedNode, showNotice, snapshot]);
 
   const refreshMonitorSnapshot = useCallback(async (): Promise<void> => {
     const currentMapId = snapshot?.map.id;
@@ -352,12 +389,12 @@ function AppContent() {
     try {
       const saved = await api.createMonitor(nodeId, payload);
       await refreshMonitorSnapshot();
-      setNotice("Check added");
+      showNotice("Check added");
       return saved;
     } finally {
       setSaving(false);
     }
-  }, [refreshMonitorSnapshot]);
+  }, [refreshMonitorSnapshot, showNotice]);
 
   const updateMonitor = useCallback(async (monitorId: string, payload: MonitorPayload): Promise<MonitorRecord> => {
     setSaving(true);
@@ -365,12 +402,12 @@ function AppContent() {
     try {
       const saved = await api.patchMonitor(monitorId, payload);
       await refreshMonitorSnapshot();
-      setNotice("Check saved");
+      showNotice("Check saved");
       return saved;
     } finally {
       setSaving(false);
     }
-  }, [refreshMonitorSnapshot]);
+  }, [refreshMonitorSnapshot, showNotice]);
 
   const deleteMonitor = useCallback(async (monitorId: string): Promise<void> => {
     setSaving(true);
@@ -378,11 +415,11 @@ function AppContent() {
     try {
       await api.deleteMonitor(monitorId);
       await refreshMonitorSnapshot();
-      setNotice("Check deleted");
+      showNotice("Check deleted");
     } finally {
       setSaving(false);
     }
-  }, [refreshMonitorSnapshot]);
+  }, [refreshMonitorSnapshot, showNotice]);
 
   const runMonitor = useCallback((monitorId: string): Promise<ManualRunResponse> => api.runMonitor(monitorId), []);
   const getMonitorRun = useCallback(
@@ -399,13 +436,13 @@ function AppContent() {
       setSelectedNodeId(null);
       setSelectedLinkId(null);
       await loadSnapshot();
-      setNotice("Node deleted");
+      showNotice("Node deleted");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to delete node.");
     } finally {
       setSaving(false);
     }
-  }, [loadSnapshot, selectedNode]);
+  }, [loadSnapshot, selectedNode, showNotice]);
 
   const saveLink = useCallback(async (payload: LinkPayload) => {
     if (!snapshot) return;
@@ -421,13 +458,13 @@ function AppContent() {
       setSelectedNodeId(null);
       setAddingLink(false);
       setLinkDraftRevision((revision) => revision + 1);
-      setNotice(editingExistingLink ? "Link saved" : "Link created");
+      showNotice(editingExistingLink ? "Link saved" : "Link created");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to save link.");
     } finally {
       setSaving(false);
     }
-  }, [loadSnapshot, selectedLink, snapshot]);
+  }, [loadSnapshot, selectedLink, showNotice, snapshot]);
 
   const deleteSelectedLink = useCallback(async () => {
     if (!selectedLink) return;
@@ -438,13 +475,13 @@ function AppContent() {
       await api.deleteLink(selectedLink.id);
       setSelectedLinkId(null);
       await loadSnapshot();
-      setNotice("Link deleted");
+      showNotice("Link deleted");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to delete link.");
     } finally {
       setSaving(false);
     }
-  }, [loadSnapshot, selectedLink]);
+  }, [loadSnapshot, selectedLink, showNotice]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -514,7 +551,7 @@ function AppContent() {
         </div>
       ) : null}
       {notice ? (
-        <button type="button" className="message notice" onClick={() => setNotice(null)} aria-label="Dismiss notification" aria-live="polite">
+        <button type="button" className="message notice" onClick={dismissNotice} aria-label="Dismiss notification" aria-live="polite">
           {notice}
         </button>
       ) : null}

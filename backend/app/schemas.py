@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import re
 from ipaddress import IPv4Address
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
@@ -8,6 +9,8 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .icon_manifest import ICON_IDS
+
+REMOTE_MDI_ICON_ID = re.compile(r"mdi-[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 
 NodeKind = Literal["device", "vm", "container", "kubernetes", "service", "cloud", "other"]
 LinkKind = Literal["local", "virtual"]
@@ -37,6 +40,13 @@ def _hyperlink(value: str | None) -> str | None:
         raise ValueError("must be an absolute http or https URL")
     if parsed.username is not None or parsed.password is not None:
         raise ValueError("must not include credentials")
+    return value
+
+
+def _icon_id(value: str) -> str:
+    value = value.strip().lower()
+    if value not in ICON_IDS and REMOTE_MDI_ICON_ID.fullmatch(value) is None:
+        raise ValueError("icon_id must be a bundled icon or a valid mdi- identifier")
     return value
 
 
@@ -105,10 +115,7 @@ class NodeCreate(StrictModel):
     @field_validator("icon_id")
     @classmethod
     def valid_icon_id(cls, value: str) -> str:
-        value = value.strip()
-        if value not in ICON_IDS:
-            raise ValueError("icon_id is not in the local icon manifest")
-        return value
+        return _icon_id(value)
 
     _valid_hyperlink = field_validator("hyperlink")(_hyperlink)
 
@@ -140,10 +147,7 @@ class NodePatch(StrictModel):
     def valid_icon_id(cls, value: str | None) -> str | None:
         if value is None:
             return value
-        value = value.strip()
-        if value not in ICON_IDS:
-            raise ValueError("icon_id is not in the local icon manifest")
-        return value
+        return _icon_id(value)
 
     _valid_hyperlink = field_validator("hyperlink")(_hyperlink)
 

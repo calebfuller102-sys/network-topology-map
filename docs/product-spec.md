@@ -16,7 +16,7 @@ Build a browser-based, manually edited network topology map with live availabili
 2. Draw, edit, and remove links between nodes. `local` is solid; `virtual` (including Internet links) is dashed. Links express user-entered topology, not automatically verified network routes.
 3. Store one or more ICMP, TCP, or HTTP(S) monitors per node; the editing UI makes one primary monitor easy, with an **Add check** control for more. Nodes without checks are valid.
 4. Show live, understandable health states without a page reload. Save node positions and the current viewport across reloads.
-5. Run entirely from locally built images and bundled assets, with persistent data, backup and restore instructions, and no runtime Internet requests.
+5. Run from locally built images and bundled assets, with persistent data and backup/restore instructions. Core map behavior remains usable without WAN access; non-bundled Material Design icons may be retrieved from the approved public icon service when connected.
 
 ### Explicitly outside V1
 
@@ -27,7 +27,7 @@ Discovery (SNMP, LLDP/CDP, Docker socket, Kubernetes API), bandwidth/traffic met
 | Topic | V1 decision |
 | --- | --- |
 | Network reach | Monitored target is an IPv4 address reachable **from inside the API container**; the IPv4-only requirement does not prove every site/VLAN is reachable. Test actual host and container routing. |
-| Offline | No WAN needed at runtime. Download dependencies and build images on a connected machine; transfer images and Compose bundle to isolated host. External/cloud targets can only be checked when the host has a route to them. |
+| Offline | No WAN is needed for core map behavior. Download dependencies and build images on a connected machine; transfer images and Compose bundle to an isolated host. Typed non-bundled `mdi-*` icons attempt a best-effort lookup from Iconify when connected and otherwise show the bundled fallback. External/cloud targets can only be checked when the host has a route to them. |
 | Auth | The first client handoff may run loopback-only on its Docker LXC without NPM, so it is reachable only from a browser on that host. For later remote access, the owner supplies authentication at NPM; the application binds its gateway to loopback by default and documents how to prevent bypassing NPM. NPM protection must cover both UI and `/api`, including SSE. |
 | Checks | Each monitor has its own interval in seconds, default 30, allowed 5–3600. One process owns the scheduler; do not run multiple API workers/replicas with SQLite. |
 | HTTP | GET `/` by default; statuses 200–399 pass; redirects are not followed by default; TLS certificates are verified by default. Expose path, scheme, and optional host header; keep TLS bypass an explicit per-check advanced setting with a warning. |
@@ -53,7 +53,7 @@ The address `10.0.0.270:25565` in the sample is invalid IPv4. Input validation m
 
 **Persistence:** Restart containers, reload the page, and confirm all nodes, links, checks, positions, and viewport survive. Monitoring resumes; former check results are visibly marked stale until fresh checks complete. Deleting a map is outside V1.
 
-**Offline demonstration:** With WAN disconnected, load and edit UI, render icons/fonts, create links, save/reload topology, check reachable LAN targets, and receive status changes; browser developer tools show zero requests to public hosts. An unreachable cloud target reports offline with a useful error and does not stall other checks.
+**Offline demonstration:** With WAN disconnected, load and edit UI, render bundled icons/fonts, create links, save/reload topology, check reachable LAN targets, and receive status changes. A non-bundled `mdi-*` icon uses the neutral bundled fallback when Iconify is unavailable. An unreachable cloud target reports offline with a useful error and does not stall other checks.
 
 ## 4. Architecture
 
@@ -63,7 +63,7 @@ The address `10.0.0.270:25565` in the sample is invalid IPv4. Input validation m
 
 **Gateway:** A small NGINX image serves the built SPA and proxies `/api/` to the API container on a private Compose network. The API also joins a separate egress network for configured monitor targets; it has no published host port. The first client handoff uses the loopback-only gateway directly from the Docker LXC, without NPM. NPM may later front only the gateway for remote/authenticated access. Disable response buffering and set an appropriate read timeout for the map SSE route. The owner can route NPM to the loopback gateway port if NPM shares the host, or attach only the gateway to an explicitly named Docker network if NPM runs in a container. Document both alternatives without assuming a particular NPM setup.
 
-**Icon resolution:** Support `mdi-<slug>` and `si-<slug>` strings. At **build time**, generate a normalized, allowlisted icon manifest and local assets from pinned `@mdi/js` and `simple-icons` packages; at runtime look up IDs only in that manifest. Ship a neutral network fallback. Do not call icon sites, interpolate an icon string into a URL, or render arbitrary user SVG. Check package licenses/brand guidelines in the release README. Include a searchable picker plus direct identifier entry; avoid bundling an enormous icon module into the initial JS chunk if a static asset manifest works better.
+**Icon resolution:** Support `mdi-<slug>` and `si-<slug>` strings. At **build time**, generate a normalized, allowlisted icon manifest and local assets from pinned `@mdi/js` and `simple-icons` packages. At runtime, allow any normalized `mdi-<slug>` identifier and retrieve it only as an image from `https://api.iconify.design/mdi/<slug>.svg`; the browser policy must permit only that host for remote images. Use a fixed icon-service color parameter so external monotone SVGs remain visible on the dark canvas. Keep `si-*` identifiers allowlisted locally. Ship a neutral network fallback whenever a remote MDI icon cannot load. Never render remote or user-provided SVG markup in the document. Check package licenses/brand guidelines in the release README. Include a searchable picker plus direct identifier entry; avoid bundling an enormous icon module into the initial JS chunk if a static asset manifest works better.
 
 **Dependencies:** Pin exact release versions with committed lockfiles and Docker base image digests when implementing. Recheck framework and package APIs at implementation time rather than copying a version number from this document.
 
@@ -325,8 +325,9 @@ Auvik dashboard or mechanically reproduce the other screenshot's fixed layout.
 
 Core: manually create/edit/move/search/delete nodes; draw solid local and
 dashed virtual/Internet links; per-node ICMP/TCP/HTTP(S) checks with configurable
-seconds; live node status; SQLite persistence; locally bundled icons/fonts;
-Docker Compose behind existing NGINX Proxy Manager; zero runtime WAN requests.
+seconds; live node status; SQLite persistence; local icons/fonts plus optional
+trusted Iconify image lookup for typed `mdi-*` icons; Docker Compose behind
+existing NGINX Proxy Manager.
 
 Stack: React/TypeScript/Vite and @xyflow/react, FastAPI/Pydantic/SQLAlchemy/
 Alembic/SQLite, asyncio checker, SSE, static NGINX gateway. Single API worker.
@@ -346,9 +347,10 @@ continue other work.
 Design constraints: nearly black canvas, compact rectangular cards, small
 technical typography, thin neutral links, restrained cyan accents, readable
 status semantics. Big map, right inspector, minimal chrome. Use valid example
-IPv4 addresses; 10.0.0.270 is invalid. Support typed mdi- and si- icon IDs
-from a local allowlisted manifest with fallback; no runtime icon CDN or raw
-user SVG. API and static UI must share an NPM-protected origin. Preserve
+IPv4 addresses; 10.0.0.270 is invalid. Support typed mdi- and si- icon IDs:
+bundled assets for the local manifest, plus a trusted Iconify image lookup for
+normalized mdi- IDs with a bundled fallback; never render raw user or remote
+SVG markup. API and static UI must share an NPM-protected origin. Preserve
 the map through restart. Show disconnected SSE state and resync on reconnect.
 
 Implementation discipline: pin dependencies and keep secrets out of the repo;

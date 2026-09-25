@@ -4,12 +4,14 @@ The stable route families and response semantics are defined in section 6 of
 [the product specification](product-spec.md). The implemented FastAPI routes
 are reflected in the generated OpenAPI document at `/openapi.json`.
 
-Node `icon_id` values are validated against the generated local manifest used
-by the frontend: the device-oriented `mdi-*` IDs plus the allowlisted
-`si-docker`, `si-kubernetes`, `si-proxmox`, `si-github`, and `si-cloudflare`
-IDs. `frontend/scripts/generate-icons.mjs` writes the matching backend
-allowlist, so the two sides cannot intentionally diverge. The API does not
-accept arbitrary SVG identifiers or remote icon URLs.
+Node `icon_id` values accept the generated local manifest used by the frontend:
+the device-oriented `mdi-*` IDs plus the allowlisted `si-docker`,
+`si-kubernetes`, `si-proxmox`, `si-github`, and `si-cloudflare` IDs.
+`frontend/scripts/generate-icons.mjs` writes the matching backend allowlist.
+The API also accepts a normalized `mdi-<slug>` identifier such as `mdi-vpn`.
+The browser may retrieve that identifier as an image from the approved Iconify
+host and uses the local fallback if it cannot load. The API does not accept
+arbitrary SVG identifiers or remote icon URLs.
 
 Link routes support list/create under a map and patch/delete by link ID. Link
 creation rejects self-links, cross-map endpoints, and duplicate endpoint/type

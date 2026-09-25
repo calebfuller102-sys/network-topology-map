@@ -98,7 +98,7 @@ def test_node_link_and_position_validation(tmp_path: Path) -> None:
         ).status_code == 422
 
 
-def test_allowlisted_simple_icon_ids_are_accepted(tmp_path: Path) -> None:
+def test_allowlisted_and_remote_mdi_icon_ids_are_accepted(tmp_path: Path) -> None:
     with make_client(tmp_path) as client:
         map_id = client.get("/api/v1/maps").json()[0]["id"]
         created = client.post(
@@ -112,10 +112,19 @@ def test_allowlisted_simple_icon_ids_are_accepted(tmp_path: Path) -> None:
             },
         )
         assert created.status_code == 201
+        remote_mdi = client.patch(
+            f"/api/v1/nodes/{created.json()['id']}", json={"icon_id": "mdi-vpn"}
+        )
+        assert remote_mdi.status_code == 200
+        assert remote_mdi.json()["icon_id"] == "mdi-vpn"
         rejected = client.patch(
             f"/api/v1/nodes/{created.json()['id']}", json={"icon_id": "si-unlisted"}
         )
         assert rejected.status_code == 422
+        malformed_mdi = client.patch(
+            f"/api/v1/nodes/{created.json()['id']}", json={"icon_id": "mdi-../../remote"}
+        )
+        assert malformed_mdi.status_code == 422
 
 
 def test_monitor_semantics_and_aggregate_status(tmp_path: Path) -> None:

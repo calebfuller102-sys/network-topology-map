@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   applyNodePositionChanges,
+  completedNodePositionChanges,
   draftResetKey,
   mergeExternalPosition,
 } from "../src/app/editorState.ts";
 import { NodePositionPersistence } from "../src/app/nodePositionPersistence.ts";
 import { ViewportPersistence } from "../src/app/viewportPersistence.ts";
 import { GENERATED_ICON_MANIFEST } from "../src/generated/icon-manifest.ts";
+import { isRemoteMdiIconId, remoteMdiAssetUrl } from "../src/app/iconId.ts";
 
 const delay = (milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
@@ -49,6 +51,17 @@ test("canvas changes preserve untouched records and unsaved inspector fields", (
   assert.equal(draftResetKey("node-a", 0), draftResetKey("node-a", 0));
   assert.notEqual(draftResetKey("node-a", 0), draftResetKey("node-b", 0));
   assert.notEqual(draftResetKey("node-a", 0), draftResetKey("node-a", 1));
+});
+
+test("only a completed drag updates the persisted graph snapshot", () => {
+  const completed = completedNodePositionChanges([
+    { id: "node-a", type: "position", position: { x: 12, y: 18 }, dragging: true },
+    { id: "node-a", type: "position", position: { x: 32, y: 48 }, dragging: false },
+  ]);
+
+  assert.deepEqual(completed, [
+    { id: "node-a", type: "position", position: { x: 32, y: 48 }, dragging: false },
+  ]);
 });
 
 test("viewport persistence debounces and serializes the newest viewport", async () => {
@@ -200,7 +213,7 @@ test("node position writes serialize per node and retain the latest drag", async
   release.get("node-a:2")?.();
 });
 
-test("icon search and direct IDs use only the local allowlist", () => {
+test("icon search keeps local choices while valid mdi identifiers can load remotely", () => {
   const matchingIcons = (query: string) => GENERATED_ICON_MANIFEST.filter((icon) => (
     icon.id.includes(query) || icon.label.toLocaleLowerCase().includes(query)
   ));
@@ -208,4 +221,8 @@ test("icon search and direct IDs use only the local allowlist", () => {
   assert.equal(GENERATED_ICON_MANIFEST.some((icon) => icon.id === "si-unlisted"), false);
   assert.equal(matchingIcons("docker")[0]?.id, "si-docker");
   assert.ok(matchingIcons("kubernetes").some((icon) => icon.id === "mdi-kubernetes"));
+  assert.equal(isRemoteMdiIconId("mdi-vpn"), true);
+  assert.equal(isRemoteMdiIconId("mdi-../../not-an-icon"), false);
+  assert.equal(remoteMdiAssetUrl("mdi-vpn"), "https://api.iconify.design/mdi/vpn.svg?color=%2379cde3");
+  assert.equal(remoteMdiAssetUrl("not-an-icon"), null);
 });
