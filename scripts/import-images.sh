@@ -28,7 +28,13 @@ if [[ ! "$declared_platform" =~ ^linux/[[:alnum:]_.\/-]+$ ]]; then
   printf 'Invalid platform manifest: %s\n' "$platform_path" >&2
   exit 2
 fi
-host_platform="$(docker info --format '{{.OSType}}/{{.Architecture}}')"
+host_os="$(docker info --format '{{.OSType}}')"
+host_architecture="$(docker info --format '{{.Architecture}}')"
+case "$host_architecture" in
+  x86_64) host_architecture="amd64" ;;
+  aarch64) host_architecture="arm64" ;;
+esac
+host_platform="${host_os}/${host_architecture}"
 declared_architecture="${declared_platform#linux/}"
 declared_architecture="${declared_architecture%%/*}"
 if [[ "$host_platform" != "linux/${declared_architecture}" ]]; then

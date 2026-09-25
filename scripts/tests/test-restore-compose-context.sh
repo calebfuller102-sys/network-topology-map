@@ -15,6 +15,12 @@ printf '%s\n' "$*" >> "$DOCKER_LOG"
 if [[ " $* " == *" exec -T api python -m app.backup --stdout "* ]]; then
   printf 'safe test backup'
 fi
+if [[ "$1" == "info" && "$2" == "--format" && "$3" == '{{.OSType}}' ]]; then
+  printf 'linux'
+fi
+if [[ "$1" == "info" && "$2" == "--format" && "$3" == '{{.Architecture}}' ]]; then
+  printf 'x86_64'
+fi
 EOF
 chmod +x "${fake_bin}/docker"
 
@@ -41,5 +47,13 @@ grep -Fqx -- "${compose_prefix} exec -T api python -m app.backup --stdout" "$doc
 grep -Fqx -- "${compose_prefix} ps --status running --quiet api web" "$docker_log"
 grep -Fqx -- "${compose_prefix} run --rm --no-deps -T api python -m app.backup --restore-stdin" "$docker_log"
 grep -Fqx -- "${compose_prefix} up --detach api web" "$docker_log"
+
+archive="${temporary_directory}/network-topology-amd64.tar"
+printf 'safe test archive' > "$archive"
+sha256sum -- "$archive" | awk '{print $1}' > "${archive}.sha256"
+printf '%s\n' 'linux/amd64' > "${archive}.platform"
+PATH="${fake_bin}:${PATH}" DOCKER_LOG="$docker_log" \
+  bash "${repo_root}/scripts/import-images.sh" "$archive" >/dev/null
+grep -Fqx -- "image load --input ${archive}" "$docker_log"
 
 printf 'Restore Compose-context command test passed.\n'
