@@ -253,9 +253,7 @@ The checked-in `compose.yaml` is the deployable configuration; this compact layo
 ```yaml
 services:
   web:
-    image: network-topology-web:0.1.0
-    pull_policy: never
-    build: ./frontend
+    image: ghcr.io/calebfuller102-sys/network-topology-map-web:0.1.0
     ports:
       - "127.0.0.1:${APP_PORT:-8080}:8080"
     read_only: true
@@ -267,9 +265,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
   api:
-    image: network-topology-api:0.1.0
-    pull_policy: never
-    build: ./backend
+    image: ghcr.io/calebfuller102-sys/network-topology-map-api:0.1.0
     environment:
       DATABASE_URL: sqlite:////data/topology.db
       DATABASE_PATH: /data/topology.db
@@ -297,7 +293,7 @@ networks:
   monitor-egress: {}
 ```
 
-The NPM overlay attaches only `web` to an existing external NPM network. The optional ICMP overlay adds only `NET_RAW`, and must be used only if target-LXC testing shows it is required. Base images are digest-pinned; build on a connected machine for the verified target platform, then use the supplied `docker save`/`docker load` scripts. Do not build on an isolated host. The backup script uses SQLite's online backup API; restore requires the stack stopped, validates integrity, and atomically replaces the DB. Block WAN and test UI plus LAN monitoring on the target before claiming offline acceptance.
+The NPM overlay attaches only `web` to an existing external NPM network. The optional ICMP overlay adds only `NET_RAW`, and must be used only if target-LXC testing shows it is required. The normal connected deployment pulls the two private GHCR images; the Dockerfiles use digest-pinned bases. Build on a connected machine for the verified target platform, then use the supplied `docker save`/`docker load` scripts only when an offline archive is required. Do not build on an isolated host. The backup script uses SQLite's online backup API; restore requires the stack stopped, validates integrity, and atomically replaces the DB. Block WAN and test UI plus LAN monitoring on the target before claiming offline acceptance.
 
 ## 10. Milestones, gates, and Codex build sequence
 

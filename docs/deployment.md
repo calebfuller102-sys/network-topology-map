@@ -35,16 +35,22 @@ acceptance checklist at the end on the target host.
 
 The images use immutable base-image digests, a pinned Python lockfile, the
 frontend pnpm lockfile, and a fixed `iputils-ping` package version. Runtime
-image pulls are disabled in Compose; explicitly build while connected or load
-the offline image archive before starting the stack.
+images are published to the repository's private GitHub Container Registry
+(GHCR) packages. Pull them with Compose on a connected host, or use the
+separate archive procedure for an offline host.
 
-## First client installation: imported images
+## First client installation: pull from GitHub Container Registry
 
-The client handoff should contain the checksummed `linux/amd64` image archive,
-the Compose files actually selected for deployment, `.env.example`, the
-`scripts/` directory, and this deployment and backup/restore guide. On the
-Docker-enabled LXC, copy `.env.example` to `.env` and retain the default
-`APP_PORT=8080` unless another **local loopback** port is needed.
+The client needs `compose.yaml`, `.env.example`, and the deployment and
+backup/restore guides. The Compose file pulls these two `linux/amd64` images:
+
+- `ghcr.io/calebfuller102-sys/network-topology-map-web:0.1.0`
+- `ghcr.io/calebfuller102-sys/network-topology-map-api:0.1.0`
+
+They are private GHCR packages. Before installing, the client's GitHub account
+must have read access to the repository/packages and create a classic personal
+access token with only `read:packages`. Do not put that token in `.env`,
+Compose YAML, source control, or shell history.
 
 The SQLite data is stored in Docker's named `topology-data` volume (normally
 `network-topology_topology-data`, because the checked-in Compose project is
@@ -52,12 +58,15 @@ named `network-topology`). It survives `docker compose down` unless
 `--volumes` is explicitly supplied. Do not use `down --volumes` for the live
 client stack.
 
-Load the handoff archive and start it without a pull or build:
+On the connected Docker-enabled LXC, authenticate, pull, and start:
 
 ```sh
 cp .env.example .env
-bash scripts/import-images.sh transfer/network-topology-amd64-<timestamp>.tar
-docker compose up --detach --no-build
+read -rs GHCR_READ_TOKEN
+printf '%s' "$GHCR_READ_TOKEN" | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
+unset GHCR_READ_TOKEN
+docker compose pull
+docker compose up --detach
 docker compose ps
 ```
 
@@ -66,20 +75,19 @@ runs on another computer, do not change the loopback bind casually: use the
 LXC console, a managed tunnel, or add and test an authenticated reverse proxy
 later. The API has no host port in either case.
 
-The imported-image installation path has CI coverage: the images are exported,
-loaded into a fresh Docker image store, then started with `--no-build` and
-`pull_policy: never`. That proves the stack does not need a build or registry
-pull after import. The CI runner itself was not WAN-disconnected, so a fully
-air-gapped target-LXC installation remains an acceptance check rather than a
-claimed test result.
+The image publication workflow publishes only `linux/amd64` images and tags
+both images with the requested release tag and their source commit. The
+packages remain private unless their visibility is deliberately changed in
+GitHub. GitHub documents that private GHCR pulls require an authenticated
+account and a `read:packages` classic token.
 
-## Connected build versus offline installation
+## Connected developer build
 
 On a connected Docker host, from the repository root:
 
 ```sh
-docker compose build --pull
-docker compose up --detach
+docker compose -f compose.yaml -f compose.build.yaml build --pull
+docker compose up --detach --pull never
 docker compose ps
 ```
 
@@ -90,7 +98,7 @@ It must not be run on a disconnected client LXC.
 A genuinely offline rebuild has not been tested or supported. It would require
 the exact base images and every build dependency/cache to be preloaded, then a
 separate no-network build test. The supported offline operation is import and
-start of the prebuilt archive above, not `docker compose build`.
+start of the prebuilt archive below, not `docker compose build`.
 
 The default gateway is available on the host at `http://127.0.0.1:8080`.
 Set `APP_PORT` to change the loopback port. The API is not published directly.
@@ -163,17 +171,20 @@ available on that host for Compose configuration/scripts; no online package
 installation is needed at runtime. This is an offline **installation**, not an
 offline image build.
 
-On the offline host, verify/load the exact archive and start without building:
+On the offline host, verify/load the exact archive and start without building
+or attempting a registry pull:
 
 ```sh
 bash scripts/import-images.sh transfer/network-topology-amd64-<timestamp>.tar
-docker compose up --detach --no-build
+docker compose up --detach --no-build --pull never
 ```
 
 The import script checks the SHA-256 sidecar and rejects a platform mismatch.
-Compose uses `pull_policy: never`; if a matching image was not loaded, startup
-fails rather than contacting a registry. Keep a tested copy of the image
-archive with the matching Compose files for rollback.
+`--pull never` makes startup fail rather than contact the registry when a
+matching image was not loaded. Keep a tested copy of the image archive with the
+matching Compose files for rollback. The CI runner tests import and no-pull
+startup, but it is not WAN-disconnected; a fully air-gapped target-LXC
+installation remains an acceptance check.
 
 When the optional NPM or ICMP capability overlay is enabled, use that exact
 Compose file set for start, backup, and restore. The default standalone client

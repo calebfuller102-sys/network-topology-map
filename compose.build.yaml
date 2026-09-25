@@ -1,0 +1,11 @@
+# Developer/CI build overlay. Client installations use compose.yaml alone and
+# pull the prebuilt GHCR images; do not include this file for a normal deploy.
+services:
+  web:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+
+  api:
+    build:
+      context: ./backend

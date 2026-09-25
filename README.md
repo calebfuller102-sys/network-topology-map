@@ -6,9 +6,10 @@ product specification is in [docs/product-spec.md](docs/product-spec.md).
 ## Current status
 
 M0–M5 and Phase 7's local monitor editor/diagnostics work are implemented. M6
-packaging groundwork is implemented: digest-pinned Dockerfiles, a private API
-gateway layout, optional NPM and ICMP overlays, checksummed offline image
-transfer, and SQLite backup/restore procedures. The remaining project state and
+packaging groundwork is implemented: private GHCR image definitions,
+digest-pinned Dockerfiles, a private API gateway layout, optional NPM and ICMP
+overlays, checksummed offline image transfer, and SQLite backup/restore
+procedures. The remaining project state and
 phase gates are tracked in [docs/roadmap.md](docs/roadmap.md). M6 remains open
 until its actual target-host checks pass.
 
@@ -17,7 +18,7 @@ builds and target deployment checks have not been performed here. The owner's
 environment must still confirm:
 
 - target LXC operating system, CPU architecture, Docker mode, and permissions;
-- NGINX Proxy Manager placement, network attachment, and authentication mode;
+- direct loopback browser access; NPM is optional until remote access is needed;
 - routing from inside the API container to intended IPv4 targets;
 - whether ICMP works without `NET_RAW`, or requires that capability;
 - cold restart, restore smoke test, and WAN-disconnected operation.
@@ -50,5 +51,5 @@ The intended runtime is two containers:
 
 The deployable Compose shape is in [compose.yaml](compose.yaml). See
 [docs/deployment.md](docs/deployment.md) and
-[docs/backup-restore.md](docs/backup-restore.md) for build, NPM, offline
-transfer, and backup/restore procedures.
+[docs/backup-restore.md](docs/backup-restore.md) for GHCR pulls, local builds,
+NPM, offline transfer, and backup/restore procedures.
