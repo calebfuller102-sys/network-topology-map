@@ -47,10 +47,11 @@ backup/restore guides. The Compose file pulls these two `linux/amd64` images:
 - `ghcr.io/calebfuller102-sys/network-topology-map-web:0.1.0`
 - `ghcr.io/calebfuller102-sys/network-topology-map-api:0.1.0`
 
-They are private GHCR packages. Before installing, the client's GitHub account
-must have read access to the repository/packages and create a classic personal
-access token with only `read:packages`. Do not put that token in `.env`,
-Compose YAML, source control, or shell history.
+They are public GHCR packages linked to this public repository, so the client
+does not need a GitHub login or token to pull them. If package visibility is
+ever changed back to private, the client must authenticate with an account that
+has package access and a classic `read:packages` token. Do not put a token in
+`.env`, Compose YAML, source control, or shell history.
 
 The SQLite data is stored in Docker's named `topology-data` volume (normally
 `network-topology_topology-data`, because the checked-in Compose project is
@@ -62,9 +63,6 @@ On the connected Docker-enabled LXC, authenticate, pull, and start:
 
 ```sh
 cp .env.example .env
-read -rs GHCR_READ_TOKEN
-printf '%s' "$GHCR_READ_TOKEN" | docker login ghcr.io -u YOUR_GITHUB_USERNAME --password-stdin
-unset GHCR_READ_TOKEN
 docker compose pull
 docker compose up --detach
 docker compose ps
@@ -76,10 +74,10 @@ LXC console, a managed tunnel, or add and test an authenticated reverse proxy
 later. The API has no host port in either case.
 
 The image publication workflow publishes only `linux/amd64` images and tags
-both images with the requested release tag and their source commit. The
-packages remain private unless their visibility is deliberately changed in
-GitHub. GitHub documents that private GHCR pulls require an authenticated
-account and a `read:packages` classic token.
+both images with the requested release tag and their source commit, then marks
+the linked packages public. GitHub documents that public GHCR packages can be
+pulled anonymously; private packages require an authenticated account and a
+`read:packages` classic token.
 
 ## Connected developer build
 
