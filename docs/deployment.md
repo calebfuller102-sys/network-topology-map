@@ -68,7 +68,10 @@ later. The API has no host port in either case.
 
 The imported-image installation path has CI coverage: the images are exported,
 loaded into a fresh Docker image store, then started with `--no-build` and
-`pull_policy: never`. It is the supported disconnected-host path.
+`pull_policy: never`. That proves the stack does not need a build or registry
+pull after import. The CI runner itself was not WAN-disconnected, so a fully
+air-gapped target-LXC installation remains an acceptance check rather than a
+claimed test result.
 
 ## Connected build versus offline installation
 
