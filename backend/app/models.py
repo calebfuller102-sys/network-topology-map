@@ -40,6 +40,9 @@ class Map(Base):
     links: Mapped[list[Link]] = relationship(
         back_populates="map", cascade="all, delete-orphan", passive_deletes=True
     )
+    groups: Mapped[list[Group]] = relationship(
+        back_populates="map", cascade="all, delete-orphan", passive_deletes=True
+    )
     events: Mapped[list[MapEvent]] = relationship(
         back_populates="map", cascade="all, delete-orphan", passive_deletes=True
     )
@@ -72,6 +75,9 @@ class Node(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     map_id: Mapped[str] = mapped_column(ForeignKey("maps.id", ondelete="CASCADE"), nullable=False)
+    group_id: Mapped[str | None] = mapped_column(
+        ForeignKey("groups.id", ondelete="SET NULL"), nullable=True
+    )
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
     icon_id: Mapped[str] = mapped_column(String(100), nullable=False, default="mdi-server")
@@ -84,6 +90,7 @@ class Node(Base):
     updated_at: Mapped[str] = mapped_column(String(40), nullable=False, default=utc_timestamp)
 
     map: Mapped[Map] = relationship(back_populates="nodes")
+    group: Mapped[Group | None] = relationship(back_populates="nodes")
     monitors: Mapped[list[Monitor]] = relationship(
         back_populates="node", cascade="all, delete-orphan", passive_deletes=True
     )
@@ -108,10 +115,34 @@ class Link(Base):
     target_node_id: Mapped[str] = mapped_column(
         ForeignKey("nodes.id", ondelete="CASCADE"), nullable=False
     )
+    source_handle: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    target_handle: Mapped[str | None] = mapped_column(String(20), nullable=True)
     kind: Mapped[str] = mapped_column(String(10), nullable=False)
     created_at: Mapped[str] = mapped_column(String(40), nullable=False, default=utc_timestamp)
 
     map: Mapped[Map] = relationship(back_populates="links")
+
+
+class Group(Base):
+    __tablename__ = "groups"
+    __table_args__ = (
+        CheckConstraint("width >= 260", name="ck_groups_width"),
+        CheckConstraint("height >= 160", name="ck_groups_height"),
+        Index("ix_groups_map", "map_id"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    map_id: Mapped[str] = mapped_column(ForeignKey("maps.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    x: Mapped[float] = mapped_column(Float, nullable=False)
+    y: Mapped[float] = mapped_column(Float, nullable=False)
+    width: Mapped[float] = mapped_column(Float, nullable=False, default=360.0)
+    height: Mapped[float] = mapped_column(Float, nullable=False, default=240.0)
+    created_at: Mapped[str] = mapped_column(String(40), nullable=False, default=utc_timestamp)
+    updated_at: Mapped[str] = mapped_column(String(40), nullable=False, default=utc_timestamp)
+
+    map: Mapped[Map] = relationship(back_populates="groups")
+    nodes: Mapped[list[Node]] = relationship(back_populates="group")
 
 
 class Monitor(Base):

@@ -8,14 +8,17 @@ Node `icon_id` values accept the generated local manifest used by the frontend:
 the device-oriented `mdi-*` IDs plus the allowlisted `si-docker`,
 `si-kubernetes`, `si-proxmox`, `si-github`, and `si-cloudflare` IDs.
 `frontend/scripts/generate-icons.mjs` writes the matching backend allowlist.
-The API also accepts a normalized `mdi-<slug>` identifier such as `mdi-vpn`.
-The browser may retrieve that identifier as an image from the approved Iconify
-host and uses the local fallback if it cannot load. The API does not accept
-arbitrary SVG identifiers or remote icon URLs.
+The API also accepts normalized `mdi-<slug>` and `si-<slug>` identifiers such
+as `mdi-vpn` and `si-tailscale`. The browser may retrieve them as images from
+the approved Iconify host and uses the local fallback if they cannot load. The
+API does not accept arbitrary SVG identifiers or remote icon URLs.
 
 Link routes support list/create under a map and patch/delete by link ID. Link
 creation rejects self-links, cross-map endpoints, and duplicate endpoint/type
-pairs.
+pairs. Optional validated source and target handle IDs retain a side selected
+by a direct perimeter connection (`top`, `right`, `bottom`, or `left` for either
+endpoint). Older role-suffixed handle IDs are normalized when read. Group routes support named rectangular
+groups; deleting a group keeps its nodes but releases their membership.
 
 Monitor routes support list/create under a node and patch/delete by monitor ID.
 `POST /api/v1/monitors/{monitor_id}/run` returns `202` with a queued
@@ -45,6 +48,11 @@ target. For HTTPS, certificate verification remains enabled by default;
 because the URL uses the configured IPv4 address, TLS name verification is
 against that IP address. An optional Host header changes HTTP routing only and
 does not provide a separate TLS server name.
+
+If ICMP reports `icmp_permission`, the ping process could not start inside the
+API container; no packet was sent to the target. Validate the target LXC first,
+then use `compose.icmp-capability.yaml` to add only `NET_RAW` when required.
+Do not use a privileged container to work around this failure.
 
 The M3 API contract, M4 monitor-run contract, and M5 event contract are
 implemented and locally tested. The SSE journal supports revision replay and

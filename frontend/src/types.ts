@@ -8,6 +8,7 @@ export type NodeKind =
   | "other";
 
 export type LinkKind = "local" | "virtual";
+export type LinkHandle = "top" | "right" | "bottom" | "left";
 
 export type Status = "unknown" | "online" | "degraded" | "offline";
 
@@ -33,6 +34,7 @@ export interface NodeRecord {
   hyperlink: string | null;
   ipv4: string | null;
   display_port: number | null;
+  group_id: string | null;
   x: number;
   y: number;
   created_at: string;
@@ -45,6 +47,8 @@ export interface LinkRecord {
   source_node_id: string;
   target_node_id: string;
   kind: LinkKind;
+  source_handle: LinkHandle | null;
+  target_handle: LinkHandle | null;
   created_at: string;
 }
 
@@ -52,6 +56,28 @@ export interface LinkPayload {
   source_node_id: string;
   target_node_id: string;
   kind: LinkKind;
+  source_handle?: LinkHandle | null;
+  target_handle?: LinkHandle | null;
+}
+
+export interface GroupRecord {
+  id: string;
+  map_id: string;
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GroupPayload {
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 export interface MonitorResult {
@@ -132,6 +158,7 @@ export interface Snapshot {
   revision: number;
   map: MapRecord;
   nodes: NodeRecord[];
+  groups: GroupRecord[];
   links: LinkRecord[];
   monitors: MonitorRecord[];
   statuses: NodeStatus[];
@@ -144,6 +171,7 @@ export interface NodePayload {
   hyperlink: string | null;
   ipv4: string | null;
   display_port: number | null;
+  group_id?: string | null;
   x: number;
   y: number;
 }

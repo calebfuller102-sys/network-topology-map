@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       image_tag:
-        description: Release tag for both GHCR images (for example, 0.1.1)
+        description: Release tag for both GHCR images (for example, 0.1.530)
         required: true
-        default: "0.1.1"
+        default: "0.1.530"
         type: string
 
 permissions:

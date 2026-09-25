@@ -15,9 +15,9 @@ the discrepancy before silently changing behavior.
   deployment behind NGINX Proxy Manager.
 - V1 excludes discovery, telemetry, traffic metrics, alerting, outage history,
   user accounts/RBAC, third-party integrations, and native mobile applications.
-- Do not add runtime WAN requests except for the explicit Iconify Material
-  Design icon image lookup. That lookup is restricted to `https://api.iconify.design`,
-  accepts normalized `mdi-` identifiers only, and must fall back to a bundled
+- Do not add runtime WAN requests except for the explicit Iconify icon image
+  lookup. That lookup is restricted to `https://api.iconify.design`, accepts
+  normalized `mdi-` and `si-` identifiers only, and must fall back to a bundled
   icon when unavailable. Never execute remote SVG markup, mount a Docker
   socket, or use privileged containers.
 

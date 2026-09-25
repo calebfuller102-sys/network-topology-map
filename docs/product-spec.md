@@ -20,7 +20,7 @@ Build a browser-based, manually edited network topology map with live availabili
 
 ### Explicitly outside V1
 
-Discovery (SNMP, LLDP/CDP, Docker socket, Kubernetes API), bandwidth/traffic metrics, port-level diagramming, automatic layout, outage history/percentages, alert destinations, user accounts/RBAC, third-party integrations, mobile native apps, arbitrary SVG uploads, and automatic geographic mapping. A single map is exposed initially; the schema supports additional maps later. Expandable server/service groups are a later feature; keep node IDs and coordinates independent so grouping can be added without data loss.
+Discovery (SNMP, LLDP/CDP, Docker socket, Kubernetes API), bandwidth/traffic metrics, port-level diagramming, automatic layout, outage history/percentages, alert destinations, user accounts/RBAC, third-party integrations, mobile native apps, arbitrary SVG uploads, and automatic geographic mapping. A single map is exposed initially; the schema supports additional maps later. Named topology groups organize related nodes without changing their identities or links. Groups are single-level: moving a group moves its member nodes, dragging a node into its perimeter snaps it inside, and dragging it out releases it. Nested and collapsible groups remain outside V1.
 
 ## 2. Decisions and assumptions to validate at acceptance
 
@@ -45,7 +45,7 @@ The address `10.0.0.270:25565` in the sample is invalid IPv4. Input validation m
 
 **Node:** Add a node with name, type, icon identifier, optional HTTP(S) hyperlink, optional IPv4, optional display port, and coordinates. Selecting it opens a right inspector; with no selection the map uses the full workspace. A node icon with a saved hyperlink opens it in a new tab. Save edits explicitly; drag movement is debounced and persisted on drag stop. Deleting a node also removes its connected links and checks after confirmation. Invalid icon IDs display a safe fallback and a helpful validation message. Never execute pasted markup as SVG/HTML.
 
-**Links:** Drag from visible connection handles or use an inspector action to connect two nodes. Assign `local` or `virtual`; change type in link inspector. Reject self-links and duplicate unordered pairs of the same type in the same map; permit a local and a virtual link between the same two nodes if expressly created. No arrowheads in V1.
+**Links:** Drag from visible connection points on any side of a node or use an inspector action to connect two nodes. The selected perimeter points are retained across reloads. Assign `local` or `virtual`; change type in link inspector. Reject self-links and duplicate unordered pairs of the same type in the same map; permit a local and a virtual link between the same two nodes if expressly created. No arrowheads in V1.
 
 **Checks:** Add ICMP with target IPv4; TCP with IPv4 and port 1–65535; HTTP(S) with IPv4, port, path, and scheme. A node IPv4 can prefill the target, but a monitor owns its own target values so it remains explicit. Each enabled check runs on its configured cadence, has a bounded timeout (default 3 seconds), and displays latest result or concise error. A manual **Check now** action runs a check without changing its schedule. Deleting/disable removes its result from aggregation immediately. Monitor changes reschedule cleanly.
 
@@ -63,7 +63,7 @@ The address `10.0.0.270:25565` in the sample is invalid IPv4. Input validation m
 
 **Gateway:** A small NGINX image serves the built SPA and proxies `/api/` to the API container on a private Compose network. The API also joins a separate egress network for configured monitor targets; it has no published host port. The first client handoff uses the loopback-only gateway directly from the Docker LXC, without NPM. NPM may later front only the gateway for remote/authenticated access. Disable response buffering and set an appropriate read timeout for the map SSE route. The owner can route NPM to the loopback gateway port if NPM shares the host, or attach only the gateway to an explicitly named Docker network if NPM runs in a container. Document both alternatives without assuming a particular NPM setup.
 
-**Icon resolution:** Support `mdi-<slug>` and `si-<slug>` strings. At **build time**, generate a normalized, allowlisted icon manifest and local assets from pinned `@mdi/js` and `simple-icons` packages. At runtime, allow any normalized `mdi-<slug>` identifier and retrieve it only as an image from `https://api.iconify.design/mdi/<slug>.svg`; the browser policy must permit only that host for remote images. Use a fixed icon-service color parameter so external monotone SVGs remain visible on the dark canvas. Keep `si-*` identifiers allowlisted locally. Ship a neutral network fallback whenever a remote MDI icon cannot load. Never render remote or user-provided SVG markup in the document. Check package licenses/brand guidelines in the release README. Include a searchable picker plus direct identifier entry; avoid bundling an enormous icon module into the initial JS chunk if a static asset manifest works better.
+**Icon resolution:** Support `mdi-<slug>` and `si-<slug>` strings. At **build time**, generate a normalized, allowlisted icon manifest and local assets from pinned `@mdi/js` and `simple-icons` packages. At runtime, allow any normalized `mdi-<slug>` and `si-<slug>` identifier and retrieve it only as an image from `https://api.iconify.design/mdi/<slug>.svg` or `https://api.iconify.design/simple-icons/<slug>.svg`; the browser policy must permit only that host for remote images. Use a fixed icon-service color parameter so external monotone SVGs remain visible on the dark canvas. Ship a neutral network fallback whenever a remote icon cannot load. Never render remote or user-provided SVG markup in the document. Check package licenses/brand guidelines in the release README. Include a searchable picker plus direct identifier entry; avoid bundling an enormous icon module into the initial JS chunk if a static asset manifest works better.
 
 **Dependencies:** Pin exact release versions with committed lockfiles and Docker base image digests when implementing. Recheck framework and package APIs at implementation time rather than copying a version number from this document.
 
@@ -84,6 +84,7 @@ CREATE TABLE maps (
 CREATE TABLE nodes (
   id TEXT PRIMARY KEY,
   map_id TEXT NOT NULL REFERENCES maps(id) ON DELETE CASCADE,
+  group_id TEXT REFERENCES groups(id) ON DELETE SET NULL,
   name TEXT NOT NULL,
   kind TEXT NOT NULL CHECK(kind IN
     ('device','vm','container','kubernetes','service','cloud','other')),
@@ -102,8 +103,21 @@ CREATE TABLE links (
   source_node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
   target_node_id TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
   kind TEXT NOT NULL CHECK(kind IN ('local','virtual')),
+  source_handle TEXT,
+  target_handle TEXT,
   created_at TEXT NOT NULL,
   CHECK(source_node_id <> target_node_id)
+);
+CREATE TABLE groups (
+  id TEXT PRIMARY KEY,
+  map_id TEXT NOT NULL REFERENCES maps(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  x REAL NOT NULL,
+  y REAL NOT NULL,
+  width REAL NOT NULL,
+  height REAL NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
 );
 CREATE TABLE monitors (
   id TEXT PRIMARY KEY,
@@ -157,6 +171,8 @@ Prefix every route `/api/v1`. All mutations validate JSON with consistent 400/40
 | `PATCH /nodes/{node_id}/position` | Save drag-stop position; avoid rebuilding all data. |
 | `GET /maps/{map_id}/links` / `POST /maps/{map_id}/links` | List/create links. |
 | `PATCH /links/{link_id}` / `DELETE /links/{link_id}` | Edit type/remove link. |
+| `GET /maps/{map_id}/groups` / `POST /maps/{map_id}/groups` | List/create named groups. |
+| `PATCH /groups/{group_id}` / `DELETE /groups/{group_id}` | Move, resize, rename, or remove a group. |
 | `GET /nodes/{node_id}/monitors` / `POST /nodes/{node_id}/monitors` | List/create checks. |
 | `PATCH /monitors/{monitor_id}` / `DELETE /monitors/{monitor_id}` | Edit/disable/delete check. |
 | `POST /monitors/{monitor_id}/run` | Enqueue immediate check; return 202, do not block on target. |
@@ -189,7 +205,7 @@ App
    └─ StatusLegend + ToastRegion + ConfirmDialog
 ```
 
-**Tokens (starting values, adjust after visual QA):** canvas `#111617`; surface `#171D1F`; raised `#20282A`; border `#344044`; primary text `#E4EAEB`; secondary `#91A0A3`; cyan accent `#79CDE3`; online `#55C7AA`; degraded `#E6BD65`; offline `#F36F6F`; unknown `#77888B`. These are design proposals, not sampled exact colors. Use accessible contrast for small labels and never communicate state by color alone (tooltip/label and semantic status text).
+**Tokens (starting values, adjust after visual QA):** canvas `#111617`; surface `#171D1F`; raised `#20282A`; border `#344044`; primary text `#E4EAEB`; secondary `#91A0A3`; cyan accent `#79CDE3`; online `#4FCB95`; degraded `#E6BD65`; offline `#F36F6F`; unknown `#77888B`. These are design proposals, not sampled exact colors. Use accessible contrast for small labels and never communicate state by color alone (tooltip/label and semantic status text).
 
 Compact rectangular cards around 190–240 px wide with 8–10 px corners, 1 px borders, little or no shadow, 12–13 px typography, a locally bundled mono face for addresses, a clear sans for names, and a small glyph. Bold name on line one; muted IPv4 and port on line two. Use thin, mostly neutral edges; solid local vs dashed virtual remains distinguishable even without color. Status accent is a small dot or narrow border, not a flood fill. Inspector is a fixed right panel around 320–380 px wide on desktop; on narrow screens use a drawer. Canvas occupies most of the viewport. Avoid giant KPI tiles, gradients, glass effects, oversized headings, and animated status glows.
 
@@ -253,7 +269,7 @@ The checked-in `compose.yaml` is the deployable configuration; this compact layo
 ```yaml
 services:
   web:
-    image: ghcr.io/calebfuller102-sys/network-topology-map-web:0.1.1
+    image: ghcr.io/calebfuller102-sys/network-topology-map-web:0.1.530
     ports:
       - "127.0.0.1:${APP_PORT:-8080}:8080"
     read_only: true
@@ -265,7 +281,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
   api:
-    image: ghcr.io/calebfuller102-sys/network-topology-map-api:0.1.1
+    image: ghcr.io/calebfuller102-sys/network-topology-map-api:0.1.530
     environment:
       DATABASE_URL: sqlite:////data/topology.db
       DATABASE_PATH: /data/topology.db

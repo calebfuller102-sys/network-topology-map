@@ -9,7 +9,12 @@ import {
 import { NodePositionPersistence } from "../src/app/nodePositionPersistence.ts";
 import { ViewportPersistence } from "../src/app/viewportPersistence.ts";
 import { GENERATED_ICON_MANIFEST } from "../src/generated/icon-manifest.ts";
-import { isRemoteMdiIconId, remoteMdiAssetUrl } from "../src/app/iconId.ts";
+import {
+  isRemoteMdiIconId,
+  isRemoteSiIconId,
+  remoteMdiAssetUrl,
+  remoteSiAssetUrl,
+} from "../src/app/iconId.ts";
 
 const delay = (milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 
@@ -213,7 +218,7 @@ test("node position writes serialize per node and retain the latest drag", async
   release.get("node-a:2")?.();
 });
 
-test("icon search keeps local choices while valid mdi identifiers can load remotely", () => {
+test("icon search keeps local choices while valid mdi and si identifiers can load remotely", () => {
   const matchingIcons = (query: string) => GENERATED_ICON_MANIFEST.filter((icon) => (
     icon.id.includes(query) || icon.label.toLocaleLowerCase().includes(query)
   ));
@@ -225,4 +230,8 @@ test("icon search keeps local choices while valid mdi identifiers can load remot
   assert.equal(isRemoteMdiIconId("mdi-../../not-an-icon"), false);
   assert.equal(remoteMdiAssetUrl("mdi-vpn"), "https://api.iconify.design/mdi/vpn.svg?color=%2379cde3");
   assert.equal(remoteMdiAssetUrl("not-an-icon"), null);
+  assert.equal(isRemoteSiIconId("si-tailscale"), true);
+  assert.equal(isRemoteSiIconId("si-../../not-an-icon"), false);
+  assert.equal(remoteSiAssetUrl("si-tailscale"), "https://api.iconify.design/simple-icons/tailscale.svg?color=%2379cde3");
+  assert.equal(remoteSiAssetUrl("not-an-icon"), null);
 });

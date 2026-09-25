@@ -82,7 +82,14 @@ async def _icmp(check: MonitorCheck) -> CheckOutcome:
         )
     except FileNotFoundError:
         return _failure("icmp_unavailable", "The system ping utility is unavailable", started)
-    except OSError:
+    except OSError as exc:
+        if exc.errno in {errno.EACCES, errno.EPERM}:
+            return _failure(
+                "icmp_permission",
+                "ICMP ping could not start because this container lacks permission. "
+                "Enable NET_RAW only after validating the host configuration.",
+                started,
+            )
         return _failure("icmp_error", "The ICMP check could not be started", started)
 
     try:

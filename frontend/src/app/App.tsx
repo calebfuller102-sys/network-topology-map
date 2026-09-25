@@ -1,22 +1,31 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
+  ConnectionLineType,
+  ConnectionMode,
   Controls,
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
-  type Edge,
+  type Connection,
   type OnMove,
   type OnNodeDrag,
   type OnNodesChange,
   type Viewport,
 } from "@xyflow/react";
-import { api } from "../api/client";
+import { api, ApiError } from "../api/client";
 import { LinkInspector } from "../components/LinkInspector";
 import { NodeInspector } from "../components/NodeInspector";
+import { GroupInspector } from "../components/GroupInspector";
 import { TopologyNode, type TopologyFlowNode } from "../components/TopologyNode";
+import { TopologyGroup, type TopologyFlowGroup } from "../components/TopologyGroup";
+import { TopologyLink, type TopologyFlowEdge } from "../components/TopologyLink";
 import type {
+  GroupPayload,
+  GroupRecord,
+  LinkHandle,
   LinkPayload,
+  LinkRecord,
   ManualRunResponse,
   MonitorPayload,
   MonitorRecord,
@@ -32,9 +41,14 @@ import { LiveSnapshotSync, type SnapshotLoadResult } from "./liveSnapshotSync";
 import { SnapshotCoordinator } from "./snapshotCoordinator";
 import { ViewportPersistence } from "./viewportPersistence";
 
-type FlowNode = TopologyFlowNode;
+type FlowNode = TopologyFlowNode | TopologyFlowGroup;
 
-const nodeTypes = { topology: TopologyNode };
+const nodeTypes = { topology: TopologyNode, topologyGroup: TopologyGroup };
+const edgeTypes = { topologyLink: TopologyLink };
+const NODE_WIDTH = 210;
+const NODE_HEIGHT = 59;
+const GROUP_PADDING = 16;
+const GROUP_TITLE_HEIGHT = 38;
 
 const statusLabel: Record<Status, string> = {
   unknown: "Unknown",
@@ -58,10 +72,19 @@ function matchesSearchQuery(node: NodeRecord, normalizedQuery: string): boolean 
 
 function toFlowNodes(snapshot: Snapshot, normalizedQuery: string, highlightedNodeId: string | null): FlowNode[] {
   const statusByNode = new Map(snapshot.statuses.map((status) => [status.node_id, status.status]));
-  return snapshot.nodes.map((node) => ({
+  const groups: TopologyFlowGroup[] = snapshot.groups.map((group) => ({
+    id: group.id,
+    type: "topologyGroup",
+    position: { x: group.x, y: group.y },
+    zIndex: 0,
+    style: { width: group.width, height: group.height },
+    data: { group },
+  }));
+  const nodes: TopologyFlowNode[] = snapshot.nodes.map((node) => ({
     id: node.id,
     type: "topology",
     position: { x: node.x, y: node.y },
+    zIndex: 2,
     data: {
       node,
       status: statusByNode.get(node.id) ?? "unknown",
@@ -69,21 +92,87 @@ function toFlowNodes(snapshot: Snapshot, normalizedQuery: string, highlightedNod
       highlighted: Boolean(normalizedQuery) && node.id === highlightedNodeId,
     },
   }));
+  return [...groups, ...nodes];
 }
 
-function toFlowEdges(snapshot: Snapshot, selectedLinkId: string | null): Edge[] {
-  return snapshot.links.map((link) => ({
-    id: link.id,
-    source: link.source_node_id,
-    target: link.target_node_id,
-    type: "straight",
-    style: {
-      stroke: link.id === selectedLinkId ? "#79cde3" : "#405257",
-      strokeWidth: link.id === selectedLinkId ? 2 : 1.2,
-      strokeDasharray: link.kind === "virtual" ? "6 5" : undefined,
+function nearestHandle(from: NodeRecord | undefined, to: NodeRecord | undefined, fallback: LinkHandle): LinkHandle {
+  if (!from || !to) return fallback;
+  const deltaX = to.x - from.x;
+  const deltaY = to.y - from.y;
+  if (Math.abs(deltaX) / NODE_WIDTH >= Math.abs(deltaY) / NODE_HEIGHT) {
+    return deltaX >= 0 ? "right" : "left";
+  }
+  return deltaY >= 0 ? "bottom" : "top";
+}
+
+function visibleHandle(handle: string | null, fallback: LinkHandle): LinkHandle {
+  const side = handle?.split("-")[0];
+  return side === "top" || side === "right" || side === "bottom" || side === "left" ? side : fallback;
+}
+
+function matchingLink(links: readonly LinkRecord[], sourceId: string, targetId: string, kind: LinkPayload["kind"]): LinkRecord | undefined {
+  return links.find((link) => link.kind === kind && (
+    (link.source_node_id === sourceId && link.target_node_id === targetId)
+    || (link.source_node_id === targetId && link.target_node_id === sourceId)
+  ));
+}
+
+function toFlowEdges(snapshot: Snapshot, selectedLinkId: string | null): TopologyFlowEdge[] {
+  const nodesById = new Map(snapshot.nodes.map((node) => [node.id, node]));
+  const edges: TopologyFlowEdge[] = snapshot.links.map((link) => {
+    const source = nodesById.get(link.source_node_id);
+    const target = nodesById.get(link.target_node_id);
+    return {
+      id: link.id,
+      source: link.source_node_id,
+      target: link.target_node_id,
+      sourceHandle: visibleHandle(link.source_handle, nearestHandle(source, target, "right")),
+      targetHandle: visibleHandle(link.target_handle, nearestHandle(target, source, "left")),
+      type: "topologyLink",
+      zIndex: 1,
+      data: { parallelOffset: 0 },
+      style: {
+        stroke: link.id === selectedLinkId ? "#79cde3" : "#405257",
+        strokeWidth: link.id === selectedLinkId ? 2 : 1.2,
+        strokeDasharray: link.kind === "virtual" ? "6 5" : undefined,
+      },
+      interactionWidth: 18,
+    };
+  });
+  const attachmentCounts = new Map<string, number>();
+  const attachmentKey = (edge: TopologyFlowEdge) => (
+    `${edge.source}:${edge.sourceHandle}:${edge.target}:${edge.targetHandle}`
+  );
+  for (const edge of edges) {
+    const key = attachmentKey(edge);
+    attachmentCounts.set(key, (attachmentCounts.get(key) ?? 0) + 1);
+  }
+  return edges.map((edge, index) => ({
+    ...edge,
+    data: {
+      parallelOffset: snapshot.links[index].kind === "virtual"
+        && (attachmentCounts.get(attachmentKey(edge)) ?? 0) > 1 ? 28 : 0,
     },
-    interactionWidth: 18,
   }));
+}
+
+function groupDropPosition(groups: readonly GroupRecord[], position: { x: number; y: number }) {
+  const centerX = position.x + NODE_WIDTH / 2;
+  const centerY = position.y + NODE_HEIGHT / 2;
+  const group = groups.find((candidate) => (
+    centerX >= candidate.x && centerX <= candidate.x + candidate.width
+      && centerY >= candidate.y + GROUP_TITLE_HEIGHT && centerY <= candidate.y + candidate.height
+  ));
+  if (!group) {
+    return { groupId: null, position };
+  }
+  return {
+    groupId: group.id,
+    position: {
+      x: Math.min(Math.max(position.x, group.x + GROUP_PADDING), group.x + group.width - NODE_WIDTH - GROUP_PADDING),
+      y: Math.min(Math.max(position.y, group.y + GROUP_TITLE_HEIGHT), group.y + group.height - NODE_HEIGHT - GROUP_PADDING),
+    },
+  };
 }
 
 function AppContent() {
@@ -91,8 +180,10 @@ function AppContent() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [addingNode, setAddingNode] = useState(false);
   const [addingLink, setAddingLink] = useState(false);
+  const [addingGroup, setAddingGroup] = useState(false);
   const [loading, setLoading] = useState(true);
   const [liveConnected, setLiveConnected] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -102,6 +193,7 @@ function AppContent() {
   const [notice, setNotice] = useState<string | null>(null);
   const [nodeDraftRevision, setNodeDraftRevision] = useState(0);
   const [linkDraftRevision, setLinkDraftRevision] = useState(0);
+  const [groupDraftRevision, setGroupDraftRevision] = useState(0);
   const nodePositionPersistence = useRef<NodePositionPersistence | null>(null);
   const viewportPersistence = useRef<ViewportPersistence | null>(null);
   const viewportMapId = useRef<string | null>(null);
@@ -243,6 +335,10 @@ function AppContent() {
     () => snapshot?.links.find((link) => link.id === selectedLinkId) ?? null,
     [selectedLinkId, snapshot],
   );
+  const selectedGroup = useMemo(
+    () => snapshot?.groups.find((group) => group.id === selectedGroupId) ?? null,
+    [selectedGroupId, snapshot],
+  );
   const selectedMonitors = useMemo(
     () => selectedNode ? snapshot?.monitors.filter((monitor) => monitor.node_id === selectedNode.id) ?? [] : [],
     [selectedNode, snapshot?.monitors],
@@ -252,6 +348,10 @@ function AppContent() {
     const count = snapshot?.nodes.length ?? 0;
     return { x: 120 + (count % 4) * 220, y: 120 + Math.floor(count / 4) * 150 };
   }, [snapshot?.nodes.length]);
+  const defaultGroupPosition = useMemo(() => {
+    const count = snapshot?.groups.length ?? 0;
+    return { x: 90 + (count % 3) * 110, y: 90 + Math.floor(count / 3) * 90 };
+  }, [snapshot?.groups.length]);
 
   const onNodesChange: OnNodesChange<FlowNode> = useCallback((changes) => {
     // React Flow already owns the transient drag state. Writing every pointer
@@ -279,20 +379,35 @@ function AppContent() {
   }, []);
 
   const persistPosition: OnNodeDrag<FlowNode> = useCallback((_event, node) => {
+    if (node.type === "topologyGroup") {
+      const group = node.data.group;
+      if (!group) return;
+      setError(null);
+      void api.patchGroup(group.id, { x: node.position.x, y: node.position.y })
+        .then(() => loadSnapshot())
+        .then(() => showNotice("Group moved"))
+        .catch((cause: unknown) => setError(cause instanceof Error ? cause.message : "Unable to save group position."));
+      return;
+    }
     setError(null);
+    const dropped = snapshot ? groupDropPosition(snapshot.groups, node.position) : { groupId: null, position: node.position };
     setSnapshot((current) => {
       if (!current) return current;
       const nodes = applyNodePositionChanges(current.nodes, [{
         id: node.id,
         type: "position",
-        position: node.position,
+        position: dropped.position,
         dragging: false,
       }]);
-      return nodes === current.nodes ? current : { ...current, nodes };
+      const membershipChanged = current.nodes.some((item) => item.id === node.id && item.group_id !== dropped.groupId);
+      return nodes === current.nodes && !membershipChanged ? current : {
+        ...current,
+        nodes: nodes.map((item) => item.id === node.id ? { ...item, group_id: dropped.groupId } : item),
+      };
     });
     if (!nodePositionPersistence.current) {
       nodePositionPersistence.current = new NodePositionPersistence(
-        (nodeId, position) => api.patchNodePosition(nodeId, position.x, position.y),
+        (nodeId, position) => api.patchNodePosition(nodeId, position.x, position.y, position.groupId),
         (cause) => {
           setError(cause instanceof Error ? cause.message : "Unable to save node position.");
           void loadSnapshot();
@@ -300,8 +415,8 @@ function AppContent() {
         () => showNotice("Position saved"),
       );
     }
-    nodePositionPersistence.current.schedule(node.id, node.position);
-  }, [loadSnapshot, showNotice]);
+    nodePositionPersistence.current.schedule(node.id, { ...dropped.position, groupId: dropped.groupId });
+  }, [loadSnapshot, showNotice, snapshot]);
 
   const queueViewportPersistence = useCallback((mapId: string, viewport: Viewport) => {
     if (viewportMapId.current !== mapId) {
@@ -336,7 +451,9 @@ function AppContent() {
   const beginAddingNode = useCallback(() => {
     setSelectedNodeId(null);
     setSelectedLinkId(null);
+    setSelectedGroupId(null);
     setAddingLink(false);
+    setAddingGroup(false);
     setAddingNode(true);
     setNodeDraftRevision((revision) => revision + 1);
   }, []);
@@ -344,9 +461,30 @@ function AppContent() {
   const beginAddingLink = useCallback(() => {
     setSelectedNodeId(null);
     setSelectedLinkId(null);
+    setSelectedGroupId(null);
     setAddingNode(false);
+    setAddingGroup(false);
     setAddingLink(true);
     setLinkDraftRevision((revision) => revision + 1);
+  }, []);
+
+  const selectSavedLink = useCallback((linkId: string) => {
+    setSelectedLinkId(linkId);
+    setSelectedNodeId(null);
+    setSelectedGroupId(null);
+    setAddingNode(false);
+    setAddingLink(false);
+    setAddingGroup(false);
+  }, []);
+
+  const beginAddingGroup = useCallback(() => {
+    setSelectedNodeId(null);
+    setSelectedLinkId(null);
+    setSelectedGroupId(null);
+    setAddingNode(false);
+    setAddingLink(false);
+    setAddingGroup(true);
+    setGroupDraftRevision((revision) => revision + 1);
   }, []);
 
   const saveNode = useCallback(async (payload: NodePayload) => {
@@ -371,6 +509,45 @@ function AppContent() {
       setSaving(false);
     }
   }, [loadSnapshot, selectedNode, showNotice, snapshot]);
+
+  const saveGroup = useCallback(async (payload: GroupPayload) => {
+    if (!snapshot) return;
+    const editingExistingGroup = Boolean(selectedGroup);
+    setSaving(true);
+    setError(null);
+    try {
+      const saved = selectedGroup
+        ? await api.patchGroup(selectedGroup.id, payload)
+        : await api.createGroup(snapshot.map.id, payload);
+      await loadSnapshot();
+      setSelectedGroupId(saved.id);
+      setSelectedNodeId(null);
+      setSelectedLinkId(null);
+      setAddingGroup(false);
+      setGroupDraftRevision((revision) => revision + 1);
+      showNotice(editingExistingGroup ? "Group saved" : "Group created");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to save group.");
+    } finally {
+      setSaving(false);
+    }
+  }, [loadSnapshot, selectedGroup, showNotice, snapshot]);
+
+  const deleteSelectedGroup = useCallback(async () => {
+    if (!selectedGroup) return;
+    if (!window.confirm(`Delete ${selectedGroup.name}? Nodes will remain on the map.`)) return;
+    setSaving(true);
+    try {
+      await api.deleteGroup(selectedGroup.id);
+      setSelectedGroupId(null);
+      await loadSnapshot();
+      showNotice("Group deleted");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to delete group.");
+    } finally {
+      setSaving(false);
+    }
+  }, [loadSnapshot, selectedGroup, showNotice]);
 
   const refreshMonitorSnapshot = useCallback(async (): Promise<void> => {
     const currentMapId = snapshot?.map.id;
@@ -453,11 +630,15 @@ function AppContent() {
       const saved = selectedLink
         ? await api.patchLink(selectedLink.id, payload.kind)
         : await api.createLink(snapshot.map.id, payload);
-      await loadSnapshot();
+      const refreshed = await loadSnapshot(snapshot.map.id, false);
       setSelectedLinkId(saved.id);
       setSelectedNodeId(null);
       setAddingLink(false);
       setLinkDraftRevision((revision) => revision + 1);
+      if (!refreshed) {
+        setError("The link was saved, but the map could not refresh. Reload to see or edit it.");
+        return;
+      }
       showNotice(editingExistingLink ? "Link saved" : "Link created");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to save link.");
@@ -482,6 +663,49 @@ function AppContent() {
       setSaving(false);
     }
   }, [loadSnapshot, selectedLink, showNotice]);
+
+  const connectNodes = useCallback((connection: Connection) => {
+    if (!snapshot || !connection.source || !connection.target || connection.source === connection.target) {
+      return;
+    }
+    const existing = matchingLink(snapshot.links, connection.source, connection.target, "local");
+    if (existing) {
+      selectSavedLink(existing.id);
+      showNotice("This link already exists — selected it for editing");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    void api.createLink(snapshot.map.id, {
+        source_node_id: connection.source,
+        target_node_id: connection.target,
+        kind: "local",
+        source_handle: connection.sourceHandle as LinkPayload["source_handle"],
+        target_handle: connection.targetHandle as LinkPayload["target_handle"],
+      })
+      .then(async (saved) => {
+        const refreshed = await loadSnapshot(snapshot.map.id, false);
+        selectSavedLink(saved.id);
+        if (!refreshed) {
+          setError("The link was saved, but the map could not refresh. Reload to see or edit it.");
+          return;
+        }
+        showNotice("Link created");
+      })
+      .catch(async (cause: unknown) => {
+        if (cause instanceof ApiError && cause.code === "duplicate_link") {
+          const refreshed = await loadSnapshot(snapshot.map.id, false);
+          const duplicate = refreshed && matchingLink(refreshed.links, connection.source!, connection.target!, "local");
+          if (duplicate) {
+            selectSavedLink(duplicate.id);
+            showNotice("This link already exists — selected it for editing");
+            return;
+          }
+        }
+        setError(cause instanceof Error ? cause.message : "Unable to create link.");
+      })
+      .finally(() => setSaving(false));
+  }, [loadSnapshot, selectSavedLink, showNotice, snapshot]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -535,6 +759,7 @@ function AppContent() {
           >
             Add link
           </button>
+          <button className="button muted" type="button" onClick={beginAddingGroup}>Add group</button>
           <button
             className="button primary"
             type="button"
@@ -623,33 +848,47 @@ function AppContent() {
               nodes={flowNodes}
               edges={flowEdges}
               nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
               onNodesChange={onNodesChange}
               onNodeClick={(_event, node) => {
-                setSelectedNodeId(node.id);
-                setAddingNode(false);
-                setSelectedLinkId(null);
-                setAddingLink(false);
+                if (node.type === "topologyGroup") {
+                  setSelectedGroupId(node.id);
+                  setSelectedNodeId(null);
+                  setSelectedLinkId(null);
+                  setAddingGroup(false);
+                } else {
+                  setSelectedNodeId(node.id);
+                  setSelectedGroupId(null);
+                  setAddingNode(false);
+                  setSelectedLinkId(null);
+                  setAddingLink(false);
+                  setAddingGroup(false);
+                }
               }}
               onEdgeClick={(_event, edge) => {
-                setSelectedLinkId(edge.id);
-                setSelectedNodeId(null);
-                setAddingNode(false);
-                setAddingLink(false);
+                selectSavedLink(edge.id);
               }}
               onPaneClick={() => {
                 setSelectedNodeId(null);
                 setSelectedLinkId(null);
+                setSelectedGroupId(null);
                 setAddingNode(false);
                 setAddingLink(false);
+                setAddingGroup(false);
               }}
               onNodeDragStop={persistPosition}
+              onConnect={connectNodes}
+              connectionMode={ConnectionMode.Loose}
+              connectionLineType={ConnectionLineType.Bezier}
               onMoveEnd={persistViewport}
               defaultViewport={snapshot ? {
                 x: snapshot.map.viewport_x,
                 y: snapshot.map.viewport_y,
                 zoom: snapshot.map.viewport_zoom,
               } : undefined}
-              nodesConnectable={false}
+              nodesConnectable
+              elevateNodesOnSelect={false}
+              elevateEdgesOnSelect={false}
               deleteKeyCode={null}
               fitView={flowNodes.length === 0}
               minZoom={0.2}
@@ -684,6 +923,7 @@ function AppContent() {
         {selectedLink || addingLink ? (
           <LinkInspector
             link={selectedLink}
+            links={snapshot?.links ?? []}
             nodes={snapshot?.nodes ?? []}
             resetKey={draftResetKey(selectedLink?.id ?? null, linkDraftRevision)}
             saving={saving}
@@ -693,6 +933,7 @@ function AppContent() {
             }}
             onSave={saveLink}
             onDelete={deleteSelectedLink}
+            onSelectExisting={selectSavedLink}
           />
         ) : selectedNode || addingNode ? (
           <NodeInspector
@@ -714,6 +955,19 @@ function AppContent() {
             onRunMonitor={runMonitor}
             onGetMonitorRun={getMonitorRun}
             onRefreshMonitors={refreshMonitorSnapshot}
+          />
+        ) : selectedGroup || addingGroup ? (
+          <GroupInspector
+            group={selectedGroup}
+            defaultPosition={defaultGroupPosition}
+            resetKey={draftResetKey(selectedGroup?.id ?? null, groupDraftRevision)}
+            saving={saving}
+            onCancel={() => {
+              setSelectedGroupId(null);
+              setAddingGroup(false);
+            }}
+            onSave={saveGroup}
+            onDelete={deleteSelectedGroup}
           />
         ) : null}
       </section>

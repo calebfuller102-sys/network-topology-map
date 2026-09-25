@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import socket
 
 import pytest
@@ -53,6 +54,21 @@ async def test_icmp_loopback_succeeds() -> None:
     result = await run_check(check("icmp"))
     assert result.success
     assert result.latency_ms is not None
+
+
+@pytest.mark.asyncio
+async def test_icmp_permission_failure_explains_container_capability(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def deny_ping(*_args, **_kwargs):
+        raise PermissionError(errno.EPERM, "fixture permission denied")
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", deny_ping)
+    result = await run_check(check("icmp"))
+
+    assert not result.success
+    assert result.error_code == "icmp_permission"
+    assert "NET_RAW" in (result.error_message or "")
 
 
 @pytest.mark.asyncio

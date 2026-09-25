@@ -1,5 +1,10 @@
 import { GENERATED_ICON_MANIFEST } from "./generated/icon-manifest";
-import { isRemoteMdiIconId, remoteMdiAssetUrl } from "./app/iconId";
+import {
+  isRemoteMdiIconId,
+  isRemoteSiIconId,
+  remoteMdiAssetUrl,
+  remoteSiAssetUrl,
+} from "./app/iconId";
 
 export interface IconOption {
   id: string;
@@ -39,9 +44,24 @@ function remoteMdiIcon(iconId: string): IconOption {
   };
 }
 
+function remoteSiIcon(iconId: string): IconOption {
+  const assetUrl = remoteSiAssetUrl(iconId);
+  if (!assetUrl) {
+    return FALLBACK_ICON;
+  }
+  const slug = iconId.slice("si-".length);
+  return {
+    id: iconId,
+    label: `Simple Icon: ${slug}`,
+    glyph: "",
+    assetUrl,
+  };
+}
+
 export function iconForId(iconId: string): IconOption {
   return ICON_MANIFEST.find((icon) => icon.id === iconId)
-    ?? (isRemoteMdiIconId(iconId) ? remoteMdiIcon(iconId) : FALLBACK_ICON);
+    ?? (isRemoteMdiIconId(iconId) ? remoteMdiIcon(iconId)
+      : isRemoteSiIconId(iconId) ? remoteSiIcon(iconId) : FALLBACK_ICON);
 }
 
 export function isAllowlistedIconId(iconId: string): boolean {
@@ -49,7 +69,7 @@ export function isAllowlistedIconId(iconId: string): boolean {
 }
 
 export function isSupportedIconId(iconId: string): boolean {
-  return isAllowlistedIconId(iconId) || isRemoteMdiIconId(iconId);
+  return isAllowlistedIconId(iconId) || isRemoteMdiIconId(iconId) || isRemoteSiIconId(iconId);
 }
 
 export function matchingIcons(query: string): readonly IconOption[] {

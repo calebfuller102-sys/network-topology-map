@@ -2,6 +2,8 @@ import type {
   LinkPayload,
   LinkRecord,
   LinkKind,
+  GroupPayload,
+  GroupRecord,
   ManualRunResponse,
   MapRecord,
   MonitorPayload,
@@ -67,6 +69,18 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  createGroup: (mapId: string, payload: GroupPayload) =>
+    request<GroupRecord>(`/maps/${mapId}/groups`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  patchGroup: (groupId: string, payload: Partial<GroupPayload>) =>
+    request<GroupRecord>(`/groups/${groupId}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    }),
+  deleteGroup: (groupId: string) =>
+    request<void>(`/groups/${groupId}`, { method: "DELETE" }),
   patchNode: (nodeId: string, payload: NodePayload) =>
     request<NodeRecord>(`/nodes/${nodeId}`, {
       method: "PATCH",
@@ -90,10 +104,10 @@ export const api = {
     request<void>(`/links/${linkId}`, {
       method: "DELETE",
     }),
-  patchNodePosition: (nodeId: string, x: number, y: number) =>
+  patchNodePosition: (nodeId: string, x: number, y: number, group_id?: string | null) =>
     request<NodeRecord>(`/nodes/${nodeId}/position`, {
       method: "PATCH",
-      body: JSON.stringify({ x, y }),
+      body: JSON.stringify({ x, y, ...(group_id === undefined ? {} : { group_id }) }),
     }),
   patchViewport: (
     mapId: string,

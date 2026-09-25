@@ -36,7 +36,10 @@ export function TopologyNode({ data, selected }: NodeProps<TopologyFlowNode>) {
       role="group"
       aria-label={`${data.node.name}, ${address}, status ${data.status}`}
     >
-      <Handle type="target" position={Position.Left} className="node-handle" />
+      <Handle id="top" type="source" position={Position.Top} className="node-handle" />
+      <Handle id="right" type="source" position={Position.Right} className="node-handle" />
+      <Handle id="bottom" type="source" position={Position.Bottom} className="node-handle" />
+      <Handle id="left" type="source" position={Position.Left} className="node-handle" />
       {data.node.hyperlink ? (
         <a
           className="node-glyph nodrag nopan"
@@ -57,7 +60,6 @@ export function TopologyNode({ data, selected }: NodeProps<TopologyFlowNode>) {
         <span className="node-address">{address}</span>
       </div>
       <span className="node-status" title={`Status: ${data.status}`} aria-label={`Status: ${data.status}`} />
-      <Handle type="source" position={Position.Right} className="node-handle" />
     </div>
   );
 }

@@ -6,7 +6,7 @@ import time
 from pathlib import Path
 
 from app.main import create_app
-from app.models import MonitorResult
+from app.models import Link, MonitorResult
 from app.monitoring.checks import CheckOutcome
 from app.monitoring.scheduler import MonitorScheduler
 from fastapi.testclient import TestClient
@@ -98,7 +98,7 @@ def test_node_link_and_position_validation(tmp_path: Path) -> None:
         ).status_code == 422
 
 
-def test_allowlisted_and_remote_mdi_icon_ids_are_accepted(tmp_path: Path) -> None:
+def test_allowlisted_and_remote_icon_ids_are_accepted(tmp_path: Path) -> None:
     with make_client(tmp_path) as client:
         map_id = client.get("/api/v1/maps").json()[0]["id"]
         created = client.post(
@@ -117,14 +117,167 @@ def test_allowlisted_and_remote_mdi_icon_ids_are_accepted(tmp_path: Path) -> Non
         )
         assert remote_mdi.status_code == 200
         assert remote_mdi.json()["icon_id"] == "mdi-vpn"
-        rejected = client.patch(
+        remote_si = client.patch(
             f"/api/v1/nodes/{created.json()['id']}", json={"icon_id": "si-unlisted"}
         )
-        assert rejected.status_code == 422
+        assert remote_si.status_code == 200
+        assert remote_si.json()["icon_id"] == "si-unlisted"
         malformed_mdi = client.patch(
             f"/api/v1/nodes/{created.json()['id']}", json={"icon_id": "mdi-../../remote"}
         )
         assert malformed_mdi.status_code == 422
+
+
+def test_groups_keep_members_together_and_links_remember_perimeter_handles(tmp_path: Path) -> None:
+    with make_client(tmp_path) as client:
+        map_id = client.get("/api/v1/maps").json()[0]["id"]
+        group = client.post(
+            f"/api/v1/maps/{map_id}/groups",
+            json={"name": "Core services", "x": 100, "y": 200, "width": 400, "height": 250},
+        )
+        assert group.status_code == 201
+        first = client.post(
+            f"/api/v1/maps/{map_id}/nodes",
+            json={
+                "name": "A", "kind": "device", "group_id": group.json()["id"],
+                "x": 140, "y": 260,
+            },
+        ).json()
+        second = client.post(
+            f"/api/v1/maps/{map_id}/nodes",
+            json={"name": "B", "kind": "device", "x": 600, "y": 260},
+        ).json()
+        linked = client.post(
+            f"/api/v1/maps/{map_id}/links",
+            json={
+                "source_node_id": second["id"],
+                "target_node_id": first["id"],
+                "kind": "local",
+                "source_handle": "bottom",
+                "target_handle": "top",
+            },
+        )
+        assert linked.status_code == 201
+        # Endpoint IDs are canonicalized, so the associated handles must move with them.
+        if linked.json()["source_node_id"] == second["id"]:
+            assert linked.json()["source_handle"] == "bottom"
+            assert linked.json()["target_handle"] == "top"
+        else:
+            assert linked.json()["source_handle"] == "top"
+            assert linked.json()["target_handle"] == "bottom"
+
+        moved = client.patch(f"/api/v1/groups/{group.json()['id']}", json={"x": 130, "y": 215})
+        assert moved.status_code == 200
+        snapshot = client.get(f"/api/v1/maps/{map_id}/snapshot").json()
+        assert snapshot["groups"][0]["name"] == "Core services"
+        member = next(node for node in snapshot["nodes"] if node["id"] == first["id"])
+        assert (member["x"], member["y"], member["group_id"]) == (170, 275, group.json()["id"])
+
+        removed = client.delete(f"/api/v1/groups/{group.json()['id']}")
+        assert removed.status_code == 204
+        released = client.get(f"/api/v1/nodes/{first['id']}").json()
+        assert released["group_id"] is None
+
+
+def test_link_handles_survive_restart_and_legacy_rows_remain_visible(tmp_path: Path) -> None:
+    database_url = f"sqlite:///{tmp_path / 'links.db'}"
+    app = create_app(database_url, start_monitor_scheduler=False)
+    with TestClient(app) as client:
+        map_id = client.get("/api/v1/maps").json()[0]["id"]
+        first = client.post(
+            f"/api/v1/maps/{map_id}/nodes",
+            json={"name": "A", "kind": "device", "x": 0, "y": 0},
+        ).json()
+        second = client.post(
+            f"/api/v1/maps/{map_id}/nodes",
+            json={"name": "B", "kind": "device", "x": 300, "y": 0},
+        ).json()
+        local = client.post(
+            f"/api/v1/maps/{map_id}/links",
+            json={
+                "source_node_id": first["id"],
+                "target_node_id": second["id"],
+                "kind": "local",
+                "source_handle": "right",
+                "target_handle": "left",
+            },
+        )
+        assert local.status_code == 201
+        if local.json()["source_node_id"] == first["id"]:
+            assert (local.json()["source_handle"], local.json()["target_handle"]) == (
+                "right",
+                "left",
+            )
+        else:
+            assert (local.json()["source_handle"], local.json()["target_handle"]) == (
+                "left",
+                "right",
+            )
+        virtual = client.post(
+            f"/api/v1/maps/{map_id}/links",
+            json={
+                "source_node_id": first["id"],
+                "target_node_id": second["id"],
+                "kind": "virtual",
+                "source_handle": "bottom-source",
+                "target_handle": "top-target",
+            },
+        )
+        assert virtual.status_code == 201
+        if virtual.json()["source_node_id"] == first["id"]:
+            assert (virtual.json()["source_handle"], virtual.json()["target_handle"]) == (
+                "bottom",
+                "top",
+            )
+        else:
+            assert (virtual.json()["source_handle"], virtual.json()["target_handle"]) == (
+                "top",
+                "bottom",
+            )
+        invalid = client.post(
+            f"/api/v1/maps/{map_id}/links",
+            json={
+                "source_node_id": first["id"],
+                "target_node_id": second["id"],
+                "kind": "local",
+                "source_handle": "middle",
+            },
+        )
+        assert invalid.status_code == 422
+        duplicate = client.post(
+            f"/api/v1/maps/{map_id}/links",
+            json={
+                "source_node_id": second["id"],
+                "target_node_id": first["id"],
+                "kind": "local",
+            },
+        )
+        assert duplicate.status_code == 409
+        assert duplicate.json()["error"]["code"] == "duplicate_link"
+        with app.state.db.session() as session:
+            legacy = session.get(Link, virtual.json()["id"])
+            assert legacy is not None
+            assert legacy.source_handle is not None and legacy.target_handle is not None
+            legacy.source_handle += "-source"
+            legacy.target_handle += "-target"
+            session.commit()
+
+    restarted = create_app(database_url, start_monitor_scheduler=False)
+    with TestClient(restarted) as client:
+        snapshot = client.get(f"/api/v1/maps/{map_id}/snapshot")
+        assert snapshot.status_code == 200
+        links = {link["id"]: link for link in snapshot.json()["links"]}
+        assert set(links) == {local.json()["id"], virtual.json()["id"]}
+        assert {
+            links[virtual.json()["id"]]["source_handle"],
+            links[virtual.json()["id"]]["target_handle"],
+        } == {"bottom", "top"}
+        listed = client.get(f"/api/v1/maps/{map_id}/links")
+        assert listed.status_code == 200
+        assert {link["id"] for link in listed.json()} == set(links)
+        assert client.delete(f"/api/v1/links/{local.json()['id']}").status_code == 204
+        remaining = client.get(f"/api/v1/maps/{map_id}/snapshot").json()["links"]
+        assert [link["id"] for link in remaining] == [virtual.json()["id"]]
 
 
 def test_monitor_semantics_and_aggregate_status(tmp_path: Path) -> None:
@@ -278,7 +431,7 @@ def test_repeated_startup_persists_migration_and_stale_result(tmp_path: Path) ->
             revision = connection.exec_driver_sql(
                 "SELECT version_num FROM alembic_version"
             ).scalar()
-            assert revision == "0003_node_hyperlink"
+            assert revision == "0004_groups_and_link_handles"
 
 
 def test_monitor_edit_and_disable_clear_prior_result(tmp_path: Path) -> None:

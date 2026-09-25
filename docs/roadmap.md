@@ -13,6 +13,7 @@ not present yet; it must have a phase owner and an exit gate here.
 | Docker images and NGINX gateway | Phase 6 | Dockerfiles, immutable base digests, API-only monitor egress, non-masqueraded gateway bridge, non-root/read-only services, NPM overlay, and unbuffered SSE gateway are implemented; Docker build is not run on this workstation | Container images build from pinned inputs, target routes are verified, and `/api` remains private behind the gateway |
 | NPM/LXC/ICMP acceptance | Phase 6 | Requires owner environment; target OS, architecture, Docker nesting, NPM placement, auth, routes, and ICMP capability are unknown | Actual target LXC routing, permissions, NPM auth, and cold restart checks pass |
 | Offline transfer and backup/restore | Phase 6 | Export/import and online SQLite backup/restore scripts are implemented; backup helper tests are local, but Docker transfer and target restore smoke tests are unverified | WAN-disconnected operation and restore smoke test pass |
+| Topology groups, perimeter links, and expanded icon lookup | M8 | Implemented locally: persisted single-level groups, node drop membership, four-side link handles, normalized online `si-*` lookup, and visual polish | API migration, group/link persistence, frontend build, and browser interaction checks pass; target-LXC ICMP capability remains an M6 host gate |
 
 ## Phase gates
 

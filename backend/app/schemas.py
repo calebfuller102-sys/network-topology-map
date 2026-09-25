@@ -6,11 +6,27 @@ from ipaddress import IPv4Address
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator, model_validator
 
 from .icon_manifest import ICON_IDS
 
 REMOTE_MDI_ICON_ID = re.compile(r"mdi-[a-z0-9]+(?:-[a-z0-9]+)*\Z")
+REMOTE_SI_ICON_ID = re.compile(r"si-[a-z0-9]+(?:-[a-z0-9]+)*\Z")
+
+
+def _normalize_link_handle(value: object) -> object:
+    # The first perimeter implementation saved separate source/target handle IDs.
+    # A single handle per side can serve either endpoint, including old links.
+    if isinstance(value, str):
+        for suffix in ("-source", "-target"):
+            if value.endswith(suffix):
+                return value.removesuffix(suffix)
+    return value
+
+
+LinkHandle = Annotated[
+    Literal["top", "right", "bottom", "left"], BeforeValidator(_normalize_link_handle)
+]
 
 NodeKind = Literal["device", "vm", "container", "kubernetes", "service", "cloud", "other"]
 LinkKind = Literal["local", "virtual"]
@@ -45,8 +61,12 @@ def _hyperlink(value: str | None) -> str | None:
 
 def _icon_id(value: str) -> str:
     value = value.strip().lower()
-    if value not in ICON_IDS and REMOTE_MDI_ICON_ID.fullmatch(value) is None:
-        raise ValueError("icon_id must be a bundled icon or a valid mdi- identifier")
+    is_remote_icon = (
+        REMOTE_MDI_ICON_ID.fullmatch(value) is not None
+        or REMOTE_SI_ICON_ID.fullmatch(value) is not None
+    )
+    if value not in ICON_IDS and not is_remote_icon:
+        raise ValueError("icon_id must be a bundled icon or a valid mdi- or si- identifier")
     return value
 
 
@@ -99,6 +119,7 @@ class NodeCreate(StrictModel):
     hyperlink: str | None = Field(default=None, max_length=2048)
     ipv4: IPv4Address | None = None
     display_port: Annotated[int | None, Field(ge=1, le=65535)] = None
+    group_id: str | None = None
     x: float
     y: float
 
@@ -127,6 +148,7 @@ class NodePatch(StrictModel):
     hyperlink: str | None = Field(default=None, max_length=2048)
     ipv4: IPv4Address | None = None
     display_port: Annotated[int | None, Field(ge=1, le=65535)] = None
+    group_id: str | None = None
     x: float | None = None
     y: float | None = None
 
@@ -164,6 +186,7 @@ class NodePatch(StrictModel):
 class PositionPatch(StrictModel):
     x: float
     y: float
+    group_id: str | None = None
 
     _finite_position = field_validator("x", "y")(_finite)
 
@@ -179,6 +202,7 @@ class NodeOut(StrictModel):
     hyperlink: str | None
     ipv4: str | None
     display_port: int | None
+    group_id: str | None
     x: float
     y: float
     created_at: str
@@ -189,6 +213,8 @@ class LinkCreate(StrictModel):
     source_node_id: str
     target_node_id: str
     kind: LinkKind
+    source_handle: LinkHandle | None = None
+    target_handle: LinkHandle | None = None
 
 
 class LinkPatch(StrictModel):
@@ -203,7 +229,64 @@ class LinkOut(StrictModel):
     source_node_id: str
     target_node_id: str
     kind: LinkKind
+    source_handle: LinkHandle | None
+    target_handle: LinkHandle | None
     created_at: str
+
+
+class GroupCreate(StrictModel):
+    name: str = Field(min_length=1, max_length=100)
+    x: float
+    y: float
+    width: Annotated[float, Field(ge=260)] = 360
+    height: Annotated[float, Field(ge=160)] = 240
+
+    _finite_values = field_validator("x", "y", "width", "height")(_finite)
+
+    @field_validator("name")
+    @classmethod
+    def non_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
+
+
+class GroupPatch(StrictModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    x: float | None = None
+    y: float | None = None
+    width: Annotated[float | None, Field(ge=260)] = None
+    height: Annotated[float | None, Field(ge=160)] = None
+
+    _finite_values = field_validator("x", "y", "width", "height")(_finite)
+
+    @model_validator(mode="after")
+    def has_change(self) -> GroupPatch:
+        if not self.model_fields_set:
+            raise ValueError("at least one field is required")
+        for field in ("name", "x", "y", "width", "height"):
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
+        if self.name is not None:
+            self.name = self.name.strip()
+            if not self.name:
+                raise ValueError("name must not be blank")
+        return self
+
+
+class GroupOut(StrictModel):
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+    id: str
+    map_id: str
+    name: str
+    x: float
+    y: float
+    width: float
+    height: float
+    created_at: str
+    updated_at: str
 
 
 class MonitorFields(StrictModel):
@@ -337,6 +420,7 @@ class MapSnapshot(StrictModel):
     revision: int
     map: MapOut
     nodes: list[NodeOut]
+    groups: list[GroupOut]
     links: list[LinkOut]
     monitors: list[MonitorOut]
     statuses: list[NodeStatusOut]

@@ -13,9 +13,12 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..errors import ApiError
 from ..events import EventBroker, TopologyEvent, append_event, load_event_replay, snapshot_revision
-from ..models import Link, Map, Monitor, Node
+from ..models import Group, Link, Map, Monitor, Node
 from ..monitoring.scheduler import SchedulerUnavailableError
 from ..schemas import (
+    GroupCreate,
+    GroupOut,
+    GroupPatch,
     LinkCreate,
     LinkOut,
     LinkPatch,
@@ -59,6 +62,21 @@ def _link_or_404(db: Session, link_id: str) -> Link:
     return item
 
 
+def _group_or_404(db: Session, group_id: str) -> Group:
+    item = db.get(Group, group_id)
+    if item is None:
+        raise ApiError(404, "group_not_found", "Group was not found")
+    return item
+
+
+def _validate_node_group(db: Session, map_id: str, group_id: str | None) -> None:
+    if group_id is None:
+        return
+    group = _group_or_404(db, group_id)
+    if group.map_id != map_id:
+        raise ApiError(409, "cross_map_group", "The selected group belongs to another map")
+
+
 def _monitor_or_404(db: Session, monitor_id: str) -> Monitor:
     item = db.get(Monitor, monitor_id)
     if item is None:
@@ -86,7 +104,7 @@ def _publish_event(request: Request, event: TopologyEvent) -> None:
     request.app.state.event_broker.publish_threadsafe(event)
 
 
-def _touch(item: Map | Node | Monitor) -> None:
+def _touch(item: Map | Node | Monitor | Group) -> None:
     item.updated_at = utc_iso()
 
 
@@ -134,6 +152,9 @@ def get_snapshot(map_id: str, db: Session = Depends(get_db)) -> MapSnapshot:
         links = list(
             db.scalars(select(Link).where(Link.map_id == map_id).order_by(Link.created_at))
         )
+        groups = list(
+            db.scalars(select(Group).where(Group.map_id == map_id).order_by(Group.created_at))
+        )
         monitors_by_node: dict[str, list[Monitor]] = {node.id: [] for node in nodes}
         if nodes:
             monitors = list(
@@ -153,6 +174,7 @@ def get_snapshot(map_id: str, db: Session = Depends(get_db)) -> MapSnapshot:
             revision=snapshot_revision(db, map_id),
             map=MapOut.model_validate(item),
             nodes=[NodeOut.model_validate(node) for node in nodes],
+            groups=[GroupOut.model_validate(group) for group in groups],
             links=[LinkOut.model_validate(link) for link in links],
             monitors=[monitor_out(monitor, started_at) for monitor in monitors],
             statuses=[
@@ -237,11 +259,63 @@ def list_nodes(map_id: str, db: Session = Depends(get_db)) -> list[Node]:
     return list(db.scalars(select(Node).where(Node.map_id == map_id).order_by(Node.created_at)))
 
 
+@router.get("/maps/{map_id}/groups", response_model=list[GroupOut])
+def list_groups(map_id: str, db: Session = Depends(get_db)) -> list[Group]:
+    _map_or_404(db, map_id)
+    return list(db.scalars(select(Group).where(Group.map_id == map_id).order_by(Group.created_at)))
+
+
+@router.post("/maps/{map_id}/groups", response_model=GroupOut, status_code=status.HTTP_201_CREATED)
+def create_group(
+    map_id: str, payload: GroupCreate, request: Request, db: Session = Depends(get_db)
+) -> Group:
+    _map_or_404(db, map_id)
+    item = Group(id=str(uuid4()), map_id=map_id, **payload.model_dump())
+    db.add(item)
+    event = _commit_event(db, map_id, "topology.changed")
+    _publish_event(request, event)
+    return item
+
+
+@router.patch("/groups/{group_id}", response_model=GroupOut)
+def patch_group(
+    group_id: str, payload: GroupPatch, request: Request, db: Session = Depends(get_db)
+) -> Group:
+    item = _group_or_404(db, group_id)
+    values = payload.model_dump(exclude_unset=True)
+    delta_x = values.get("x", item.x) - item.x
+    delta_y = values.get("y", item.y) - item.y
+    for field, value in values.items():
+        setattr(item, field, value)
+    if delta_x or delta_y:
+        for node in item.nodes:
+            node.x += delta_x
+            node.y += delta_y
+            _touch(node)
+    _touch(item)
+    event = _commit_event(db, item.map_id, "topology.changed")
+    _publish_event(request, event)
+    return item
+
+
+@router.delete("/groups/{group_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_group(group_id: str, request: Request, db: Session = Depends(get_db)) -> None:
+    item = _group_or_404(db, group_id)
+    for node in item.nodes:
+        node.group_id = None
+        _touch(node)
+    event = append_event(db, item.map_id, "topology.changed")
+    db.delete(item)
+    _commit(db)
+    _publish_event(request, event)
+
+
 @router.post("/maps/{map_id}/nodes", response_model=NodeOut, status_code=status.HTTP_201_CREATED)
 def create_node(
     map_id: str, payload: NodeCreate, request: Request, db: Session = Depends(get_db)
 ) -> Node:
     _map_or_404(db, map_id)
+    _validate_node_group(db, map_id, payload.group_id)
     item = Node(
         id=str(uuid4()),
         map_id=map_id,
@@ -251,6 +325,7 @@ def create_node(
         hyperlink=payload.hyperlink,
         ipv4=str(payload.ipv4) if payload.ipv4 else None,
         display_port=payload.display_port,
+        group_id=payload.group_id,
         x=payload.x,
         y=payload.y,
     )
@@ -271,6 +346,8 @@ def patch_node(
 ) -> Node:
     item = _node_or_404(db, node_id)
     values = payload.model_dump(exclude_unset=True)
+    if "group_id" in values:
+        _validate_node_group(db, item.map_id, values["group_id"])
     if "ipv4" in values:
         values["ipv4"] = str(values["ipv4"]) if values["ipv4"] else None
     for field, value in values.items():
@@ -286,8 +363,12 @@ def patch_node_position(
     node_id: str, payload: PositionPatch, request: Request, db: Session = Depends(get_db)
 ) -> Node:
     item = _node_or_404(db, node_id)
+    if "group_id" in payload.model_fields_set:
+        _validate_node_group(db, item.map_id, payload.group_id)
     item.x = payload.x
     item.y = payload.y
+    if "group_id" in payload.model_fields_set:
+        item.group_id = payload.group_id
     _touch(item)
     event = _commit_event(db, item.map_id, "topology.changed")
     _publish_event(request, event)
@@ -333,12 +414,17 @@ def create_link(
     )
     if existing is not None:
         raise ApiError(409, "duplicate_link", "This link already exists")
+    source_handle, target_handle = payload.source_handle, payload.target_handle
+    if source.id != first:
+        source_handle, target_handle = payload.target_handle, payload.source_handle
     item = Link(
         id=str(uuid4()),
         map_id=map_id,
         source_node_id=first,
         target_node_id=second,
         kind=payload.kind,
+        source_handle=source_handle,
+        target_handle=target_handle,
     )
     db.add(item)
     event = _commit_event(db, map_id, "topology.changed")

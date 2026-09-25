@@ -3,12 +3,14 @@ import type { LinkKind, LinkPayload, LinkRecord, NodeRecord } from "../types";
 
 interface LinkInspectorProps {
   link: LinkRecord | null;
+  links: LinkRecord[];
   nodes: NodeRecord[];
   resetKey: string;
   saving: boolean;
   onCancel: () => void;
   onSave: (payload: LinkPayload) => Promise<void>;
   onDelete: () => Promise<void>;
+  onSelectExisting: (linkId: string) => void;
 }
 
 function initialDraft(link: LinkRecord | null, nodes: NodeRecord[]): LinkPayload {
@@ -25,7 +27,7 @@ function initialDraft(link: LinkRecord | null, nodes: NodeRecord[]): LinkPayload
       };
 }
 
-export function LinkInspector({ link, nodes, resetKey, saving, onCancel, onSave, onDelete }: LinkInspectorProps) {
+export function LinkInspector({ link, links, nodes, resetKey, saving, onCancel, onSave, onDelete, onSelectExisting }: LinkInspectorProps) {
   const [draft, setDraft] = useState<LinkPayload>(() => initialDraft(link, nodes));
 
   useEffect(() => {
@@ -41,7 +43,16 @@ export function LinkInspector({ link, nodes, resetKey, saving, onCancel, onSave,
     await onSave(draft);
   };
 
-  const invalidSelection = !link && (!draft.source_node_id || !draft.target_node_id || draft.source_node_id === draft.target_node_id);
+  const existingMatch = !link ? links.find((candidate) => (
+    candidate.kind === draft.kind && (
+      (candidate.source_node_id === draft.source_node_id && candidate.target_node_id === draft.target_node_id)
+      || (candidate.source_node_id === draft.target_node_id && candidate.target_node_id === draft.source_node_id)
+    )
+  )) : null;
+  const invalidSelection = !link && (
+    !draft.source_node_id || !draft.target_node_id || draft.source_node_id === draft.target_node_id || Boolean(existingMatch)
+  );
+  const nameFor = (nodeId: string) => nodes.find((node) => node.id === nodeId)?.name ?? "Missing node";
 
   return (
     <aside className="inspector" aria-label={link ? "Link inspector" : "Add link inspector"}>
@@ -89,6 +100,11 @@ export function LinkInspector({ link, nodes, resetKey, saving, onCancel, onSave,
         {!link && draft.source_node_id === draft.target_node_id && draft.source_node_id ? (
           <p className="field-error" role="alert">A node cannot link to itself.</p>
         ) : null}
+        {existingMatch ? (
+          <p className="field-error" role="alert">
+            This {draft.kind} link already exists. <button type="button" className="text-button" onClick={() => onSelectExisting(existingMatch.id)}>Open it</button> to edit or delete it.
+          </p>
+        ) : null}
         <div className="inspector-actions">
           <button type="button" className="button muted" onClick={onCancel} disabled={saving}>Cancel</button>
           <button type="submit" className="button primary" disabled={saving || invalidSelection}>
@@ -101,6 +117,25 @@ export function LinkInspector({ link, nodes, resetKey, saving, onCancel, onSave,
           </button>
         ) : null}
       </form>
+      {links.length > 0 ? (
+        <section className="saved-links" aria-label="Saved links">
+          <h3>Saved links</h3>
+          <div className="saved-links-list">
+            {links.map((candidate) => (
+              <button
+                key={candidate.id}
+                type="button"
+                className={`saved-link-button${candidate.id === link?.id ? " is-selected" : ""}`}
+                aria-current={candidate.id === link?.id ? "true" : undefined}
+                onClick={() => onSelectExisting(candidate.id)}
+              >
+                <span>{nameFor(candidate.source_node_id)} ↔ {nameFor(candidate.target_node_id)}</span>
+                <small>{candidate.kind}</small>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
     </aside>
   );
 }

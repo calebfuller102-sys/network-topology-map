@@ -44,8 +44,8 @@ separate archive procedure for an offline host.
 The client needs `compose.yaml`, `.env.example`, and the deployment and
 backup/restore guides. The Compose file pulls these two `linux/amd64` images:
 
-- `ghcr.io/calebfuller102-sys/network-topology-map-web:0.1.1`
-- `ghcr.io/calebfuller102-sys/network-topology-map-api:0.1.1`
+- `ghcr.io/calebfuller102-sys/network-topology-map-web:0.1.530`
+- `ghcr.io/calebfuller102-sys/network-topology-map-api:0.1.530`
 
 They are public GHCR packages linked to this public repository, so the client
 does not need a GitHub login or token to pull them. If the repository or either

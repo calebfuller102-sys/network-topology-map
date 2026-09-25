@@ -1,6 +1,7 @@
 interface Position {
   x: number;
   y: number;
+  groupId?: string | null;
 }
 
 type SavePosition = (nodeId: string, position: Position) => Promise<unknown>;
