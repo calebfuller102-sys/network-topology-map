@@ -29,7 +29,7 @@ docker buildx build --pull --platform "$platform" --load \
   "$repo_root/backend"
 docker buildx build --pull --platform "$platform" --load \
   --tag network-topology-web:0.1.0 --file "$repo_root/frontend/Dockerfile" \
-  "$repo_root/frontend"
+  "$repo_root"
 
 expected_architecture="${platform#linux/}"
 expected_architecture="${expected_architecture%%/*}"

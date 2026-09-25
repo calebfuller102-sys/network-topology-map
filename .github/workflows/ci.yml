@@ -54,6 +54,12 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: pnpm build
+      - name: Install Chromium for browser regression checks
+        working-directory: frontend
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Check narrow populated-map inspector behavior
+        working-directory: frontend
+        run: pnpm test:browser
 
   container-images:
     name: Container image builds
@@ -69,12 +75,31 @@ jobs:
           docker compose -f compose.yaml -f compose.npm-network.yaml config --quiet
           docker compose -f compose.yaml -f compose.icmp-capability.yaml config --quiet
       - name: Check operator shell syntax
-        run: for script in scripts/*.sh; do bash -n "$script"; done
+        run: |
+          for script in scripts/*.sh; do bash -n "$script"; done
+          bash scripts/tests/test-restore-compose-context.sh
       - name: Build pinned runtime images
         run: docker compose build --pull
       - name: Smoke test gateway after API recreation
         run: |
           docker compose up --detach
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8080/api/v1/healthz; then break; fi
+            sleep 1
+          done
+          curl --fail --show-error http://127.0.0.1:8080/api/v1/healthz
+      - name: Export, import, and smoke-test offline amd64 images
+        run: |
+          archive="$RUNNER_TEMP/network-topology-amd64.tar"
+          bash scripts/export-images.sh linux/amd64 "$archive"
+          test -f "$archive"
+          test -f "${archive}.sha256"
+          test -f "${archive}.platform"
+          docker compose down --volumes
+          docker image rm network-topology-api:0.1.0 network-topology-web:0.1.0
+          bash scripts/import-images.sh "$archive"
+          docker image inspect network-topology-api:0.1.0 network-topology-web:0.1.0
+          docker compose up --detach --no-build
           for attempt in $(seq 1 60); do
             if curl --fail --silent http://127.0.0.1:8080/api/v1/healthz; then break; fi
             sleep 1

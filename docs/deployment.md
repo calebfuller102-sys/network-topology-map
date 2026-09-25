@@ -116,13 +116,20 @@ On the offline host, verify/load the exact archive and start without building:
 
 ```sh
 bash scripts/import-images.sh transfer/network-topology-amd64-<timestamp>.tar
-docker compose up --detach
+docker compose up --detach --no-build
 ```
 
 The import script checks the SHA-256 sidecar and rejects a platform mismatch.
 Compose uses `pull_policy: never`; if a matching image was not loaded, startup
 fails rather than contacting a registry. Keep a tested copy of the image
 archive with the matching Compose files for rollback.
+
+When NPM or the optional ICMP capability is enabled, use that exact Compose
+file set for start, backup, and restore. The backup/restore scripts accept
+`--compose-overlay compose.npm-network.yaml` and
+`--compose-overlay compose.icmp-capability.yaml`; pass only the overlays in
+use. New backups record this context in a private `.compose-files` sidecar,
+which must accompany the SQLite file and its checksum.
 
 ## Target acceptance checklist (not yet verified)
 

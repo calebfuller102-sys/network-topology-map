@@ -179,7 +179,7 @@ h3 { margin: 2px 0 0; font-size: 14px; letter-spacing: -0.01em; }
   .topbar-actions { width: 100%; justify-content: flex-end; }
   .connection-state { margin-right: auto; }
   .workspace { position: relative; }
-  .workspace-empty > .inspector-empty { display: none; }
+  .inspector-empty { display: none; }
   .inspector { position: absolute; z-index: 10; top: 0; right: 0; bottom: 0; width: min(350px, 92vw); box-shadow: -12px 0 28px rgba(0, 0, 0, 0.28); }
   .canvas-toolbar { align-items: flex-start; flex-direction: column; padding: 9px 13px; }
   .search-field { width: min(100%, 280px); }

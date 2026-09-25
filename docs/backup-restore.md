@@ -3,7 +3,8 @@
 The API owns `/data/topology.db` on the named Compose volume. SQLite uses WAL
 mode, so do not copy only the live database file. `scripts/backup.sh` asks the
 running API container to use SQLite's online backup API, validates the copied
-database, writes it outside `/data`, and emits a SHA-256 sidecar. The default
+database, writes it outside `/data`, and emits SHA-256 and Compose-context
+sidecars. The default
 `backups/` directory is ignored by Git and artifacts are created with private
 permissions. Keep backups encrypted/private according to the sensitivity of
 the topology they contain.
@@ -22,9 +23,27 @@ An optional first argument chooses a destination directory:
 bash scripts/backup.sh /secure/off-host/network-topology
 ```
 
-Copy both `*.sqlite` and its `*.sqlite.sha256` file to the protected backup
-location. The script uses a temporary file and refuses to overwrite its
-timestamped artifact.
+Copy the `*.sqlite`, `*.sqlite.sha256`, and `*.sqlite.compose-files` sidecars
+to the protected backup location. The Compose-context sidecar records the base
+file and any selected overlays so restore starts the same service and network
+shape. The script uses temporary files and refuses to overwrite its timestamped
+artifacts.
+
+### Compose overlays
+
+Pass every overlay used for deployment to backup. The base `compose.yaml` is
+always included; use no overlay flag for the normal base deployment:
+
+```sh
+bash scripts/backup.sh \
+  --compose-overlay compose.npm-network.yaml \
+  --compose-overlay compose.icmp-capability.yaml
+```
+
+Only include an overlay that is actually enabled. For an NPM overlay, retain
+the same `NPM_DOCKER_NETWORK` environment value used for deployment. The
+backup records the selected file names, so later restore does not silently omit
+NPM or the optional ICMP capability.
 
 ## Restore
 
@@ -38,9 +57,31 @@ docker compose stop web api
 bash scripts/restore.sh backups/network-topology-<timestamp>-<pid>.sqlite
 ```
 
+If deployment uses overlays, stop with the same file set and preserve any
+required environment values before restoring. For example, for both optional
+overlays:
+
+```sh
+NPM_DOCKER_NETWORK=npm_proxy docker compose \
+  -f compose.yaml -f compose.npm-network.yaml -f compose.icmp-capability.yaml \
+  stop web api
+NPM_DOCKER_NETWORK=npm_proxy bash scripts/restore.sh \
+  backups/network-topology-<timestamp>-<pid>.sqlite
+```
+
 Do not run the restore module directly against an active database. If restore
 validation fails, the existing database is left in place and the stack remains
-stopped for investigation.
+stopped for investigation. Restore reads the backup's `.compose-files` sidecar
+by default. If an older backup lacks the sidecar, it warns and uses only
+`compose.yaml`. To deliberately override a recorded context, provide the exact
+overlay set explicitly:
+
+```sh
+bash scripts/restore.sh \
+  --compose-overlay compose.npm-network.yaml \
+  --compose-overlay compose.icmp-capability.yaml \
+  backups/network-topology-<timestamp>-<pid>.sqlite
+```
 
 ## Restore smoke test
 
