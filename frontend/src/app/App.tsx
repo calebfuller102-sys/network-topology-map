@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   Controls,
-  MiniMap,
   ReactFlow,
   ReactFlowProvider,
   useReactFlow,
@@ -622,7 +621,6 @@ function AppContent() {
             >
               <Background color="#263336" gap={28} size={1} />
               <Controls showInteractive={false} />
-              <MiniMap nodeColor="#405257" maskColor="rgba(10, 14, 15, 0.7)" />
               {snapshot?.nodes.length === 0 ? (
                 <div className="empty-map" role="status">
                   <span className="empty-glyph">+</span>
@@ -680,13 +678,7 @@ function AppContent() {
             onGetMonitorRun={getMonitorRun}
             onRefreshMonitors={refreshMonitorSnapshot}
           />
-        ) : (
-          <aside className="inspector inspector-empty">
-            <span className="eyebrow">Inspector</span>
-            <h2>Select a node or link</h2>
-            <p>Choose a node or link on the map to edit its details, or add one from the toolbar.</p>
-          </aside>
-        )}
+        ) : null}
       </section>
     </main>
   );

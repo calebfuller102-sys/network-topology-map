@@ -30,6 +30,7 @@ export interface NodeRecord {
   name: string;
   kind: NodeKind;
   icon_id: string;
+  hyperlink: string | null;
   ipv4: string | null;
   display_port: number | null;
   x: number;
@@ -140,6 +141,7 @@ export interface NodePayload {
   name: string;
   kind: NodeKind;
   icon_id: string;
+  hyperlink: string | null;
   ipv4: string | null;
   display_port: number | null;
   x: number;

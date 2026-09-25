@@ -75,6 +75,7 @@ class Node(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
     icon_id: Mapped[str] = mapped_column(String(100), nullable=False, default="mdi-server")
+    hyperlink: Mapped[str | None] = mapped_column(String(2048), nullable=True)
     ipv4: Mapped[str | None] = mapped_column(String(15), nullable=True)
     display_port: Mapped[int | None] = mapped_column(Integer, nullable=True)
     x: Mapped[float] = mapped_column(Float, nullable=False)

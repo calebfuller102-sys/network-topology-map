@@ -14,6 +14,21 @@ import { mergeExternalPosition } from "../app/editorState";
 
 const nodeKinds: NodeKind[] = ["device", "vm", "container", "kubernetes", "service", "cloud", "other"];
 
+function isValidHyperlink(value: string | null): boolean {
+  if (!value?.trim()) {
+    return true;
+  }
+  try {
+    const parsed = new URL(value.trim());
+    return (parsed.protocol === "http:" || parsed.protocol === "https:")
+      && Boolean(parsed.hostname)
+      && !parsed.username
+      && !parsed.password;
+  } catch {
+    return false;
+  }
+}
+
 export interface NodeInspectorProps {
   node: NodeRecord | null;
   defaultPosition: { x: number; y: number };
@@ -38,6 +53,7 @@ function initialDraft(node: NodeRecord | null, defaultPosition: { x: number; y: 
         name: node.name,
         kind: node.kind,
         icon_id: node.icon_id,
+        hyperlink: node.hyperlink,
         ipv4: node.ipv4,
         display_port: node.display_port,
         x: node.x,
@@ -47,6 +63,7 @@ function initialDraft(node: NodeRecord | null, defaultPosition: { x: number; y: 
         name: "",
         kind: "device",
         icon_id: "mdi-server",
+        hyperlink: null,
         ipv4: null,
         display_port: null,
         x: defaultPosition.x,
@@ -74,6 +91,7 @@ export function NodeInspector({
   const [draft, setDraft] = useState<NodePayload>(() => initialDraft(node, defaultPosition));
   const iconMatches = matchingIcons(draft.icon_id).slice(0, 6);
   const validIconId = isAllowlistedIconId(draft.icon_id);
+  const validHyperlink = isValidHyperlink(draft.hyperlink);
 
   useEffect(() => {
     setDraft(initialDraft(node, defaultPosition));
@@ -95,6 +113,7 @@ export function NodeInspector({
     await onSave({
       ...draft,
       name: draft.name.trim(),
+      hyperlink: draft.hyperlink?.trim() || null,
       ipv4: draft.ipv4?.trim() || null,
       display_port: draft.display_port ? Number(draft.display_port) : null,
     });
@@ -193,6 +212,28 @@ export function NodeInspector({
             />
           </label>
         </div>
+        <label>
+          Hyperlink
+          <input
+            type="url"
+            inputMode="url"
+            value={draft.hyperlink ?? ""}
+            onChange={(event) => update("hyperlink", event.target.value || null)}
+            placeholder="https://example.internal"
+            spellCheck={false}
+            autoCapitalize="none"
+            aria-invalid={!validHyperlink}
+            aria-describedby="node-hyperlink-help"
+          />
+          <span className="field-help" id="node-hyperlink-help">
+            Optional HTTP(S) address. Select the node icon to open it in a new tab.
+          </span>
+          {!validHyperlink ? (
+            <p className="field-error" role="alert">
+              Enter an absolute HTTP or HTTPS URL without credentials.
+            </p>
+          ) : null}
+        </label>
         <div className="position-readout" aria-label="Node position">
           Position <span>{Math.round(draft.x)}, {Math.round(draft.y)}</span>
         </div>
@@ -200,7 +241,7 @@ export function NodeInspector({
           <button type="button" className="button muted" onClick={onCancel} disabled={saving}>
             Cancel
           </button>
-          <button type="submit" className="button primary" disabled={saving || !draft.name.trim() || !validIconId}>
+          <button type="submit" className="button primary" disabled={saving || !draft.name.trim() || !validIconId || !validHyperlink}>
             {saving ? "Saving…" : "Save node"}
           </button>
         </div>

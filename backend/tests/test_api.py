@@ -44,10 +44,29 @@ def test_node_link_and_position_validation(tmp_path: Path) -> None:
             json={"name": "bad icon", "kind": "device", "icon_id": "remote-svg", "x": 0, "y": 0},
         )
         assert invalid_icon.status_code == 422
+        invalid_hyperlink = client.post(
+            f"/api/v1/maps/{map_id}/nodes",
+            json={
+                "name": "bad link",
+                "kind": "device",
+                "hyperlink": "javascript:alert(1)",
+                "x": 0,
+                "y": 0,
+            },
+        )
+        assert invalid_hyperlink.status_code == 422
         first = client.post(
             f"/api/v1/maps/{map_id}/nodes",
-            json={"name": "Router", "kind": "device", "ipv4": "10.0.0.1", "x": 1, "y": 2},
+            json={
+                "name": "Router",
+                "kind": "device",
+                "hyperlink": "https://router.example.internal/status",
+                "ipv4": "10.0.0.1",
+                "x": 1,
+                "y": 2,
+            },
         ).json()
+        assert first["hyperlink"] == "https://router.example.internal/status"
         second = client.post(
             f"/api/v1/maps/{map_id}/nodes",
             json={"name": "Server", "kind": "service", "x": 3, "y": 4},
@@ -71,6 +90,9 @@ def test_node_link_and_position_validation(tmp_path: Path) -> None:
         assert moved.status_code == 200
         assert moved.json()["x"] == 9
         assert client.patch(f"/api/v1/nodes/{first['id']}", json={"x": None}).status_code == 422
+        cleared_hyperlink = client.patch(f"/api/v1/nodes/{first['id']}", json={"hyperlink": None})
+        assert cleared_hyperlink.status_code == 200
+        assert cleared_hyperlink.json()["hyperlink"] is None
         assert client.patch(
             f"/api/v1/maps/{map_id}", json={"viewport_x": None}
         ).status_code == 422
@@ -247,7 +269,7 @@ def test_repeated_startup_persists_migration_and_stale_result(tmp_path: Path) ->
             revision = connection.exec_driver_sql(
                 "SELECT version_num FROM alembic_version"
             ).scalar()
-        assert revision == "0002_map_events"
+            assert revision == "0003_node_hyperlink"
 
 
 def test_monitor_edit_and_disable_clear_prior_result(tmp_path: Path) -> None:

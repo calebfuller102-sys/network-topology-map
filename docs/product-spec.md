@@ -43,7 +43,7 @@ The address `10.0.0.270:25565` in the sample is invalid IPv4. Input validation m
 
 **Map:** Open the app and see saved nodes and links on an expansive near-black canvas. Pan, zoom, fit to view, and search by name/address; search focuses/highlights a result. A compact toolbar offers **Add node**, **Fit**, and an unobtrusive status legend. An empty map explains how to add the first node. Keyboard Delete removes the selected item after confirmation where data loss is significant. Keyboard navigation and visible focus are required for controls and inspector forms.
 
-**Node:** Add a node with name, type, icon identifier, optional IPv4, optional display port, and coordinates. Selecting it opens a right inspector. Save edits explicitly; drag movement is debounced and persisted on drag stop. Deleting a node also removes its connected links and checks after confirmation. Invalid icon IDs display a safe fallback and a helpful validation message. Never execute pasted markup as SVG/HTML.
+**Node:** Add a node with name, type, icon identifier, optional HTTP(S) hyperlink, optional IPv4, optional display port, and coordinates. Selecting it opens a right inspector; with no selection the map uses the full workspace. A node icon with a saved hyperlink opens it in a new tab. Save edits explicitly; drag movement is debounced and persisted on drag stop. Deleting a node also removes its connected links and checks after confirmation. Invalid icon IDs display a safe fallback and a helpful validation message. Never execute pasted markup as SVG/HTML.
 
 **Links:** Drag from visible connection handles or use an inspector action to connect two nodes. Assign `local` or `virtual`; change type in link inspector. Reject self-links and duplicate unordered pairs of the same type in the same map; permit a local and a virtual link between the same two nodes if expressly created. No arrowheads in V1.
 
@@ -88,6 +88,7 @@ CREATE TABLE nodes (
   kind TEXT NOT NULL CHECK(kind IN
     ('device','vm','container','kubernetes','service','cloud','other')),
   icon_id TEXT NOT NULL DEFAULT 'mdi-server',
+  hyperlink TEXT,                    -- absolute HTTP(S), no credentials
   ipv4 TEXT,                         -- validate with IPv4Address in API
   display_port INTEGER CHECK(display_port BETWEEN 1 AND 65535),
   x REAL NOT NULL,
@@ -180,7 +181,7 @@ App
    ├─ TopologyCanvas (@xyflow/react)
    │  ├─ TopologyNode (icon, name, address, status marker, handles)
    │  ├─ TopologyEdge (solid or dashed; selection affordance)
-   │  ├─ CanvasControls (fit, zoom, optional minimap)
+   │  ├─ CanvasControls (fit, zoom)
    │  └─ EmptyMapHint
    ├─ Inspector
    │  ├─ NodeForm + MonitorList + MonitorForm

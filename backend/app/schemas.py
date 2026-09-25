@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from ipaddress import IPv4Address
 from typing import Annotated, Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -20,6 +21,22 @@ def _finite(value: float | None) -> float | None:
         return value
     if not math.isfinite(value):
         raise ValueError("must be a finite number")
+    return value
+
+
+def _hyperlink(value: str | None) -> str | None:
+    if value is None:
+        return None
+    value = value.strip()
+    if not value:
+        return None
+    if any(character.isspace() for character in value):
+        raise ValueError("must not contain whitespace")
+    parsed = urlsplit(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("must be an absolute http or https URL")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("must not include credentials")
     return value
 
 
@@ -69,6 +86,7 @@ class NodeCreate(StrictModel):
     name: str = Field(min_length=1, max_length=200)
     kind: NodeKind
     icon_id: str = Field(default="mdi-server", min_length=1, max_length=100)
+    hyperlink: str | None = Field(default=None, max_length=2048)
     ipv4: IPv4Address | None = None
     display_port: Annotated[int | None, Field(ge=1, le=65535)] = None
     x: float
@@ -92,11 +110,14 @@ class NodeCreate(StrictModel):
             raise ValueError("icon_id is not in the local icon manifest")
         return value
 
+    _valid_hyperlink = field_validator("hyperlink")(_hyperlink)
+
 
 class NodePatch(StrictModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     kind: NodeKind | None = None
     icon_id: str | None = Field(default=None, min_length=1, max_length=100)
+    hyperlink: str | None = Field(default=None, max_length=2048)
     ipv4: IPv4Address | None = None
     display_port: Annotated[int | None, Field(ge=1, le=65535)] = None
     x: float | None = None
@@ -124,6 +145,8 @@ class NodePatch(StrictModel):
             raise ValueError("icon_id is not in the local icon manifest")
         return value
 
+    _valid_hyperlink = field_validator("hyperlink")(_hyperlink)
+
     @model_validator(mode="after")
     def has_change(self) -> NodePatch:
         if not self.model_fields_set:
@@ -149,6 +172,7 @@ class NodeOut(StrictModel):
     name: str
     kind: NodeKind
     icon_id: str
+    hyperlink: str | None
     ipv4: str | None
     display_port: int | None
     x: float

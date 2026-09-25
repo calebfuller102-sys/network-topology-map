@@ -248,6 +248,7 @@ def create_node(
         name=payload.name,
         kind=payload.kind,
         icon_id=payload.icon_id,
+        hyperlink=payload.hyperlink,
         ipv4=str(payload.ipv4) if payload.ipv4 else None,
         display_port=payload.display_port,
         x=payload.x,

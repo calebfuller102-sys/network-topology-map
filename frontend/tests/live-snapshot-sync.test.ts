@@ -43,6 +43,7 @@ function snapshot(revision: number, status: Status): Snapshot {
       name: "Fixture node",
       kind: "service",
       icon_id: "mdi-server",
+      hyperlink: null,
       ipv4: "127.0.0.1",
       display_port: null,
       x: 0,

@@ -69,6 +69,7 @@ const snapshot = {
       name: "Audit Router",
       kind: "device",
       icon_id: "mdi-router",
+      hyperlink: "http://127.0.0.1:4173/linked-page",
       ipv4: null,
       display_port: null,
       x: 80,
@@ -82,6 +83,7 @@ const snapshot = {
       name: "Audit Service",
       kind: "service",
       icon_id: "mdi-server",
+      hyperlink: null,
       ipv4: null,
       display_port: null,
       x: 340,
@@ -112,12 +114,30 @@ test("closing an inspector at 390px restores a populated map canvas", async ({ p
 
   await page.goto(baseUrl);
   await expect(page.locator(".topology-node")).toHaveCount(2);
+  await expect(page.locator(".inspector-empty")).toHaveCount(0);
 
   await page.getByText("Audit Router", { exact: true }).click();
   await expect(page.getByRole("button", { name: "Close inspector" })).toBeVisible();
   await page.getByRole("button", { name: "Close inspector" }).click();
 
-  await expect(page.locator(".inspector-empty")).toBeHidden();
+  await expect(page.locator(".inspector")).toHaveCount(0);
   await expect(page.locator(".canvas-panel")).toHaveCSS("width", "390px");
   await expect(page.locator(".topology-node")).toHaveCount(2);
+});
+
+test("a node icon opens its saved local hyperlink", async ({ page, context }) => {
+  await page.route("**/api/v1/maps", async (route) => {
+    await route.fulfill({ json: [map] });
+  });
+  await page.route("**/api/v1/maps/map-a/snapshot", async (route) => {
+    await route.fulfill({ json: snapshot });
+  });
+  await page.route("**/api/v1/maps/map-a/events?after=*", async (route) => {
+    await route.fulfill({ contentType: "text/event-stream", body: ": connected\n\n" });
+  });
+
+  await page.goto(baseUrl);
+  const popup = context.waitForEvent("page");
+  await page.getByRole("link", { name: "Open Audit Router hyperlink" }).click();
+  await expect((await popup).url()).toBe("http://127.0.0.1:4173/linked-page");
 });

@@ -18,6 +18,17 @@ export function TopologyNode({ data, selected }: NodeProps<TopologyFlowNode>) {
   const address = data.node.ipv4
     ? `${data.node.ipv4}${data.node.display_port ? `:${data.node.display_port}` : ""}`
     : "No address";
+  const glyph = (
+    <img
+      className="node-glyph-image"
+      src={icon.assetUrl}
+      alt=""
+      onError={(event) => {
+        event.currentTarget.onerror = null;
+        event.currentTarget.src = FALLBACK_ICON.assetUrl;
+      }}
+    />
+  );
 
   return (
     <div
@@ -26,17 +37,21 @@ export function TopologyNode({ data, selected }: NodeProps<TopologyFlowNode>) {
       aria-label={`${data.node.name}, ${address}, status ${data.status}`}
     >
       <Handle type="target" position={Position.Left} className="node-handle" />
-      <div className="node-glyph" aria-hidden="true" title={icon.label}>
-        <img
-          className="node-glyph-image"
-          src={icon.assetUrl}
-          alt=""
-          onError={(event) => {
-            event.currentTarget.onerror = null;
-            event.currentTarget.src = FALLBACK_ICON.assetUrl;
-          }}
-        />
-      </div>
+      {data.node.hyperlink ? (
+        <a
+          className="node-glyph nodrag nopan"
+          href={data.node.hyperlink}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={`Open ${data.node.hyperlink}`}
+          aria-label={`Open ${data.node.name} hyperlink`}
+          onClick={(event) => event.stopPropagation()}
+        >
+          {glyph}
+        </a>
+      ) : (
+        <div className="node-glyph" aria-hidden="true" title={icon.label}>{glyph}</div>
+      )}
       <div className="node-copy">
         <strong title={data.node.name}>{data.node.name}</strong>
         <span className="node-address">{address}</span>
