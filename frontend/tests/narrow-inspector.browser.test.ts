@@ -245,6 +245,32 @@ test("named groups render behind their nodes and expose an inspector", async ({ 
   await expect(page.getByRole("button", { name: "Close group inspector" })).toBeVisible();
 });
 
+test("editing a group sends only its editable fields", async ({ page }) => {
+  const group = {
+    id: "group-a", map_id: map.id, name: "Core services", x: 45, y: 45, width: 560, height: 240,
+    created_at: map.created_at, updated_at: map.updated_at,
+  };
+  const groupedSnapshot = { ...snapshot, groups: [group] };
+  let submitted: Record<string, unknown> | null = null;
+  await page.route("**/api/v1/maps", async (route) => route.fulfill({ json: [map] }));
+  await page.route("**/api/v1/maps/map-a/snapshot", async (route) => route.fulfill({ json: groupedSnapshot }));
+  await page.route("**/api/v1/maps/map-a/events?after=*", async (route) => {
+    await route.fulfill({ contentType: "text/event-stream", body: ": connected\n\n" });
+  });
+  await page.route("**/api/v1/groups/group-a", async (route) => {
+    submitted = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({ json: { ...group, ...submitted } });
+  });
+
+  await page.goto(baseUrl);
+  await page.getByText("Core services", { exact: true }).click();
+  await page.getByLabel("Width").fill("640");
+  await page.getByRole("button", { name: "Save group" }).click();
+
+  await expect.poll(() => submitted).toMatchObject({ name: "Core services", x: 45, y: 45, width: 640, height: 240 });
+  expect(Object.keys(submitted ?? {}).sort()).toEqual(["height", "name", "width", "x", "y"]);
+});
+
 test("node cards provide one connection point on each side", async ({ page }) => {
   await page.route("**/api/v1/maps", async (route) => route.fulfill({ json: [map] }));
   await page.route("**/api/v1/maps/map-a/snapshot", async (route) => route.fulfill({ json: snapshot }));

@@ -12,7 +12,16 @@ interface GroupInspectorProps {
 }
 
 function initialDraft(group: GroupRecord | null, defaultPosition: { x: number; y: number }): GroupPayload {
-  return group ?? { name: "New group", x: defaultPosition.x, y: defaultPosition.y, width: 360, height: 240 };
+  if (group) {
+    return {
+      name: group.name,
+      x: group.x,
+      y: group.y,
+      width: group.width,
+      height: group.height,
+    };
+  }
+  return { name: "New group", x: defaultPosition.x, y: defaultPosition.y, width: 360, height: 240 };
 }
 
 export function GroupInspector({
