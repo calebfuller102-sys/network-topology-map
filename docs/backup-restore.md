@@ -29,10 +29,17 @@ file and any selected overlays so restore starts the same service and network
 shape. The script uses temporary files and refuses to overwrite its timestamped
 artifacts.
 
-### Compose overlays
+### Standalone client installation and Compose overlays
 
-Pass every overlay used for deployment to backup. The base `compose.yaml` is
-always included; use no overlay flag for the normal base deployment:
+The loopback-only first client installation uses `compose.yaml` alone, so its
+backup command needs no overlay flag:
+
+```sh
+bash scripts/backup.sh
+```
+
+Pass every optional overlay actually used for deployment to backup. The base
+`compose.yaml` is always included:
 
 ```sh
 bash scripts/backup.sh \
@@ -82,6 +89,24 @@ bash scripts/restore.sh \
   --compose-overlay compose.icmp-capability.yaml \
   backups/network-topology-<timestamp>-<pid>.sqlite
 ```
+
+## Upgrade rollback
+
+Before an upgrade, make a backup and retain the matching image archive and
+Compose files. To roll back a standalone client installation, stop the stack,
+load the earlier verified image archive, then restore the backup made at that
+same version:
+
+```sh
+docker compose stop web api
+bash scripts/import-images.sh transfer/network-topology-amd64-<previous>.tar
+bash scripts/restore.sh backups/network-topology-<previous>.sqlite
+```
+
+`restore.sh` starts `api` and `web` after validation. Do not restore a database
+from a newer schema into an older application image. If optional overlays were
+in use, the backup sidecar preserves them; retain the required environment
+values such as `NPM_DOCKER_NETWORK`.
 
 ## Restore smoke test
 
