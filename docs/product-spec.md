@@ -253,7 +253,7 @@ The checked-in `compose.yaml` is the deployable configuration; this compact layo
 ```yaml
 services:
   web:
-    image: ghcr.io/calebfuller102-sys/network-topology-map-web:0.1.0
+    image: ghcr.io/calebfuller102-sys/network-topology-map-web:0.1.1
     ports:
       - "127.0.0.1:${APP_PORT:-8080}:8080"
     read_only: true
@@ -265,7 +265,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
   api:
-    image: ghcr.io/calebfuller102-sys/network-topology-map-api:0.1.0
+    image: ghcr.io/calebfuller102-sys/network-topology-map-api:0.1.1
     environment:
       DATABASE_URL: sqlite:////data/topology.db
       DATABASE_PATH: /data/topology.db

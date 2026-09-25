@@ -86,7 +86,7 @@ def create_app(
             await event_broker.stop()
             database.dispose()
 
-    app = FastAPI(title="Network Topology API", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="Network Topology API", version="0.1.1", lifespan=lifespan)
     app.state.db = database
     app.state.process_started_at = process_started_at
     app.state.event_broker = event_broker

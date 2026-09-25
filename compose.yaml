@@ -2,7 +2,7 @@ name: network-topology
 
 services:
   web:
-    image: ghcr.io/calebfuller102-sys/network-topology-map-web:0.1.0
+    image: ghcr.io/calebfuller102-sys/network-topology-map-web:0.1.1
     ports:
       - "127.0.0.1:${APP_PORT:-8080}:8080"
     expose:
@@ -24,7 +24,7 @@ services:
       gateway: {}
 
   api:
-    image: ghcr.io/calebfuller102-sys/network-topology-map-api:0.1.0
+    image: ghcr.io/calebfuller102-sys/network-topology-map-api:0.1.1
     read_only: true
     user: "10001:10001"
     cap_drop:

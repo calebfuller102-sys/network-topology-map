@@ -25,17 +25,17 @@ if [[ -e "$archive" || -e "$checksum" || -e "$platform_file" ]]; then
 fi
 
 docker buildx build --pull --platform "$platform" --load \
-  --tag ghcr.io/calebfuller102-sys/network-topology-map-api:0.1.0 --file "$repo_root/backend/Dockerfile" \
+  --tag ghcr.io/calebfuller102-sys/network-topology-map-api:0.1.1 --file "$repo_root/backend/Dockerfile" \
   "$repo_root/backend"
 docker buildx build --pull --platform "$platform" --load \
-  --tag ghcr.io/calebfuller102-sys/network-topology-map-web:0.1.0 --file "$repo_root/frontend/Dockerfile" \
+  --tag ghcr.io/calebfuller102-sys/network-topology-map-web:0.1.1 --file "$repo_root/frontend/Dockerfile" \
   "$repo_root"
 
 expected_architecture="${platform#linux/}"
 expected_architecture="${expected_architecture%%/*}"
 for image in \
-  ghcr.io/calebfuller102-sys/network-topology-map-api:0.1.0 \
-  ghcr.io/calebfuller102-sys/network-topology-map-web:0.1.0; do
+  ghcr.io/calebfuller102-sys/network-topology-map-api:0.1.1 \
+  ghcr.io/calebfuller102-sys/network-topology-map-web:0.1.1; do
   image_platform="$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$image")"
   if [[ "$image_platform" != "linux/${expected_architecture}" ]]; then
     printf 'Built %s for %s, expected %s.\n' "$image" "$image_platform" "$platform" >&2
@@ -46,8 +46,8 @@ done
 temporary="$(mktemp "${archive_dir}/.network-topology-images.XXXXXX")"
 trap 'rm -f -- "$temporary" "${temporary}.sha256" "${temporary}.platform"' EXIT
 docker image save --output "$temporary" \
-  ghcr.io/calebfuller102-sys/network-topology-map-api:0.1.0 \
-  ghcr.io/calebfuller102-sys/network-topology-map-web:0.1.0
+  ghcr.io/calebfuller102-sys/network-topology-map-api:0.1.1 \
+  ghcr.io/calebfuller102-sys/network-topology-map-web:0.1.1
 sha256sum -- "$temporary" | awk '{print $1}' > "${temporary}.sha256"
 printf '%s\n' "$platform" > "${temporary}.platform"
 mv -- "$temporary" "$archive"

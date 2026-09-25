@@ -97,12 +97,12 @@ jobs:
           test -f "${archive}.platform"
           docker compose down --volumes
           docker image rm \
-            ghcr.io/calebfuller102-sys/network-topology-map-api:0.1.0 \
-            ghcr.io/calebfuller102-sys/network-topology-map-web:0.1.0
+            ghcr.io/calebfuller102-sys/network-topology-map-api:0.1.1 \
+            ghcr.io/calebfuller102-sys/network-topology-map-web:0.1.1
           bash scripts/import-images.sh "$archive"
           docker image inspect \
-            ghcr.io/calebfuller102-sys/network-topology-map-api:0.1.0 \
-            ghcr.io/calebfuller102-sys/network-topology-map-web:0.1.0
+            ghcr.io/calebfuller102-sys/network-topology-map-api:0.1.1 \
+            ghcr.io/calebfuller102-sys/network-topology-map-web:0.1.1
           docker compose up --detach --no-build --pull never
           for attempt in $(seq 1 60); do
             if curl --fail --silent http://127.0.0.1:8080/api/v1/healthz; then break; fi
